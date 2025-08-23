@@ -55,49 +55,6 @@ SCDLLName("carlozIndis")
   }
 }
 
-SCSFExport scsf_DisplayMainBars(SCStudyInterfaceRef sc) {
-  SCSubgraphRef OpenGraph = sc.Subgraph[0];
-  SCSubgraphRef HighGraph = sc.Subgraph[1];
-  SCSubgraphRef LowGraph = sc.Subgraph[2];
-  SCSubgraphRef CloseGraph = sc.Subgraph[3];
-
-  if (sc.SetDefaults) {
-    sc.GraphName = "Display Main Graph Bars";
-    sc.StudyDescription =
-        "Displays the main chart's price bars (OHLC) as a study.";
-    sc.AutoLoop = 1;
-    sc.DisplayStudyName = 0;
-    sc.DisplayStudyInputValues = 0;
-    sc.GlobalDisplayStudySubgraphsNameAndValue = 0;
-    sc.ScaleRangeType = SCALE_SAMEASREGION;
-    sc.GraphRegion = 0; // Overlay on main price graph
-
-    OpenGraph.Name = "Open";
-    OpenGraph.DrawStyle = DRAWSTYLE_HIDDEN;
-    OpenGraph.PrimaryColor = RGB(0, 0, 0);
-
-    HighGraph.Name = "High";
-    HighGraph.DrawStyle = DRAWSTYLE_BAR_TOP;
-    HighGraph.PrimaryColor = RGB(0, 0, 0);
-
-    LowGraph.Name = "Low";
-    LowGraph.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
-    LowGraph.PrimaryColor = RGB(0, 0, 0);
-
-    CloseGraph.Name = "Close";
-    CloseGraph.DrawStyle = DRAWSTYLE_HIDDEN;
-    CloseGraph.PrimaryColor = RGB(0, 0, 0);
-
-    return;
-  }
-
-  // Copy main price graph data to subgraphs
-  OpenGraph[sc.Index] = sc.Open[sc.Index];
-  HighGraph[sc.Index] = sc.High[sc.Index];
-  LowGraph[sc.Index] = sc.Low[sc.Index];
-  CloseGraph[sc.Index] = sc.Close[sc.Index];
-}
-
 SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
   SCSubgraphRef nUpT = sc.Subgraph[0];
   SCSubgraphRef nUpB = sc.Subgraph[1];
