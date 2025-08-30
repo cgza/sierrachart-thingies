@@ -2,3 +2,6 @@
 -std=c++17
 -IC:\SierraChart\ACS_Source
 -fms-extensions
+
+-IACS_Source
+-Iv1/__thread/support
