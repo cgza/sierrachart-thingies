@@ -50,7 +50,7 @@ SCDLLName("carlozIndis")
     downBottom.DrawZeros = false;
 
     per.Name = "Volume SMA period";
-    per.SetInt(14);
+    per.SetInt(10);
 
     multiplier.Name = "Multiplier of volume SMA to consider as high volume";
     multiplier.SetFloat(2);
