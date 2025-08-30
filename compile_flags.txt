@@ -1,0 +1,4 @@
+-o carlozIndis.dll
+-std=c++17
+-IC:\SierraChart\ACS_Source
+-fms-extensions

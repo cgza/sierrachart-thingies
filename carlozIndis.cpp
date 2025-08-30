@@ -8,7 +8,132 @@
 // marks to what you want to name your group of custom studies.
 SCDLLName("carlozIndis")
 
-    SCSFExport scsf_DeltaVolumeBars(SCStudyInterfaceRef sc) {
+    SCSFExport scsf_HiVolCandles(SCStudyInterfaceRef sc) {
+  SCSubgraphRef upTop = sc.Subgraph[0];
+  SCSubgraphRef upBottom = sc.Subgraph[1];
+  SCSubgraphRef downTop = sc.Subgraph[2];
+  SCSubgraphRef downBottom = sc.Subgraph[3];
+
+  SCInputRef per = sc.Input[0];
+  SCInputRef multiplier = sc.Input[1];
+  SCInputRef clearCurrentTrades = sc.Input[2];
+
+  if (sc.SetDefaults) {
+    sc.GraphName = "High Volume Candles";
+    sc.StudyDescription = "Displays high volume candle as ranges";
+    sc.AutoLoop = 1;
+    sc.GraphRegion = 0;
+    sc.DisplayStudyName = 0;
+    sc.DisplayStudyInputValues = 0;
+    sc.GlobalDisplayStudySubgraphsNameAndValue = 0;
+    sc.DrawStudyUnderneathMainPriceGraph = 1;
+    sc.ScaleRangeType = SCALE_SAMEASREGION;
+
+    upTop.Name = "Hi Up-Volume Top";
+    upTop.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP;
+    upTop.PrimaryColor = RGB(0, 0, 255);
+    upTop.DrawZeros = false;
+
+    upBottom.Name = "Hi Up-Volume Bottom";
+    upBottom.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM;
+    upBottom.PrimaryColor = RGB(0, 0, 255);
+    upBottom.DrawZeros = false;
+
+    downTop.Name = "Hi Down-Volume Top";
+    downTop.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP;
+    downTop.PrimaryColor = RGB(255, 0, 0);
+    downTop.DrawZeros = false;
+
+    downBottom.Name = "Hi Down-Volume Bottom";
+    downBottom.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM;
+    downBottom.PrimaryColor = RGB(255, 0, 0);
+    downBottom.DrawZeros = false;
+
+    per.Name = "Volume SMA period";
+    per.SetInt(14);
+
+    multiplier.Name = "Multiplier of volume SMA to consider as high volume";
+    multiplier.SetFloat(2);
+
+    clearCurrentTrades.Name = "Clear Current Trades on new high Volume bar";
+    clearCurrentTrades.SetYesNo(0);
+  }
+
+  // fill subgraphs on the first bar so that indicator can start
+  if (sc.Index == 0) {
+    upTop[0] = sc.High[0];
+    downBottom[0] = sc.Low[0];
+  }
+
+  // make the last bar index persistent
+  int &lastIndex = sc.GetPersistentInt(0);
+
+  // if we have a new bar
+  if (sc.Index != lastIndex) {
+    // calculate average volume
+    float avg = 0;
+    for (int x = 2; x < 2 + per.GetInt(); x++) {
+      avg += sc.Volume[sc.Index - x];
+    }
+    avg /= per.GetInt();
+
+    // how does this bar's volume compare
+    float ratio = sc.Volume[sc.Index - 1] / avg;
+    if (ratio > multiplier.GetFloat()) {
+      // if last bar was up and the previous bar didn't fire a new range
+      // if (sc.Close[sc.Index - 1] > sc.Open[sc.Index - 1]) {
+      // delta was negative (people absorbing at the bid)
+      if (sc.BidVolume[sc.Index - 1] > sc.AskVolume[sc.Index - 1]) {
+        if (upTop[sc.Index - 3] != 0) {
+          // set prev subgraph value to zero
+          upTop[sc.Index - 2] = 0;
+          upBottom[sc.Index - 2] = 0;
+          // create range
+          upTop[sc.Index - 1] = sc.High[sc.Index - 1];   // sc.Close[sc.Index - 1];
+          upBottom[sc.Index - 1] = sc.Low[sc.Index - 1]; // sc.Open[sc.Index - 1];
+          // // forward project new range
+          // for (int x = 0; x < 100; x++) {
+          //   upTop[sc.Index + x] = upTop[sc.Index - 1];
+          //   upBottom[sc.Index + x] = upBottom[sc.Index - 1];
+          // }
+          if (clearCurrentTrades.GetYesNo() == 1)
+            sc.ClearCurrentTradedBidAskVolume();
+        }
+      }
+      // last bar was down
+      // else {
+      // delta was positive (people absorbing at the ask)
+      else if (sc.AskVolume[sc.Index - 1] > sc.BidVolume[sc.Index - 1]) {
+        if (downBottom[sc.Index - 3] != 0) {
+          // set prev subgraph value to zero
+          downTop[sc.Index - 2] = 0;
+          downBottom[sc.Index - 2] = 0;
+          // create range
+          downBottom[sc.Index - 1] = sc.Low[sc.Index - 1]; // sc.Close[sc.Index - 1];
+          downTop[sc.Index - 1] = sc.High[sc.Index - 1];   // sc.Open[sc.Index - 1];
+          // // forward project new range
+          // for (int x = 0; x < 100; x++) {
+          //   downTop[sc.Index + x] = downTop[sc.Index - 1];
+          //   downBottom[sc.Index + x] = downBottom[sc.Index - 1];
+          // }
+          if (clearCurrentTrades.GetYesNo() == 1)
+            sc.ClearCurrentTradedBidAskVolume();
+        }
+      }
+    }
+    // we have a new bar, so
+    // copy previous bar's values into new bar
+    upTop[sc.Index] = upTop[sc.Index - 1];
+    upBottom[sc.Index] = upBottom[sc.Index - 1];
+    downTop[sc.Index] = downTop[sc.Index - 1];
+    downBottom[sc.Index] = downBottom[sc.Index - 1];
+
+    // save current bar index
+    lastIndex = sc.Index;
+  }
+}
+
+SCSFExport scsf_DeltaVolumeBars(SCStudyInterfaceRef sc) {
   SCSubgraphRef volume = sc.Subgraph[0];
   SCSubgraphRef askDelta = sc.Subgraph[1];
   SCSubgraphRef bidDelta = sc.Subgraph[2];
@@ -18,14 +143,18 @@ SCDLLName("carlozIndis")
     sc.StudyDescription = "Displays volume bars and their delta overlayed";
     sc.AutoLoop = 1;
     sc.ValueFormat = 0;
+    sc.DrawStudyUnderneathMainPriceGraph = 1;
     // sc.DisplayStudyName = 0;
     // sc.DisplayStudyInputValues = 0;
     // sc.GlobalDisplayStudySubgraphsNameAndValue = 0;
 
     volume.Name = "Volume Bar";
     volume.DrawStyle = DRAWSTYLE_CANDLE_BODYCLOSE;
-    volume.PrimaryColor = RGB(192, 192, 192);
+    volume.PrimaryColor = RGB(181, 208, 176);
+    volume.SecondaryColor = RGB(221, 171, 164);
+    volume.SecondaryColorUsed = 1;
     volume.DrawZeros = false;
+    volume.AutoColoring = AUTOCOLOR_BASEGRAPH;
 
     askDelta.Name = "Ask Delta";
     askDelta.DrawStyle = DRAWSTYLE_CANDLE_BODYCLOSE;
@@ -42,8 +171,9 @@ SCDLLName("carlozIndis")
   int i = sc.Index;
   int delta = sc.AskVolume[i] - sc.BidVolume[i];
 
-  // copy volume to my subgrapgh
+  // copy volume to my subgraph and color it
   volume[i] = sc.Volume[i];
+  volume.DataColor[i] = sc.Close[i] > sc.Open[i] ? volume.PrimaryColor : volume.SecondaryColor;
 
   // display the bar delta in the correspondig subgrapgh
   if (delta > 0) {
@@ -51,6 +181,9 @@ SCDLLName("carlozIndis")
     bidDelta[i] = 0;
   } else if (delta < 0) {
     bidDelta[i] = -delta;
+    askDelta[i] = 0;
+  } else {
+    bidDelta[i] = 0;
     askDelta[i] = 0;
   }
 }
@@ -98,8 +231,7 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
     sc.DrawStudyUnderneathMainPriceGraph = 1;
     sc.ScaleRangeType = SCALE_SAMEASREGION;
     // set initial transparency
-    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID,
-                                      75);
+    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID, 75);
 
     // inputs
     levelType.Name = "Create S&R Levels from";
@@ -347,14 +479,12 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
   if (sc.GetBarHasClosedStatus(sc.Index) == BHCS_BAR_HAS_CLOSED) {
     //**NUEVO HIGH || LOW
     int mmIndex = sc.Index - nBarsHL.GetInt();
-    int sinceHigh = sc.NumberOfBarsSinceHighestValue(sc.BaseDataIn[SC_HIGH],
-                                                     2 * nBarsHL.GetInt() + 1);
-    int sinceLow = sc.NumberOfBarsSinceLowestValue(sc.BaseDataIn[SC_LOW],
-                                                   2 * nBarsHL.GetInt() + 1);
+    int sinceHigh =
+        sc.NumberOfBarsSinceHighestValue(sc.BaseDataIn[SC_HIGH], 2 * nBarsHL.GetInt() + 1);
+    int sinceLow = sc.NumberOfBarsSinceLowestValue(sc.BaseDataIn[SC_LOW], 2 * nBarsHL.GetInt() + 1);
 
     // if there is a new high || low nBarsHL ago
-    if (sinceHigh == nBarsHL.GetInt() &&
-        (lookFor >= 0 || sc.High[mmIndex] > lastHigh)) {
+    if (sinceHigh == nBarsHL.GetInt() && (lookFor >= 0 || sc.High[mmIndex] > lastHigh)) {
       // si este high supera al anterior antes de haber
       // confirmado low, borro el anterior y lo sustituyo por éste
       if (lookFor <= 0 && sc.High[mmIndex] > lastHigh) {
@@ -363,14 +493,12 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
         // copiar hasta el nuevo high el down-retracement anterior al high que
         // ya no vale
         if (retracePercent.GetFloat() > 0) {
-          for (int x = lastHighIndex - 1; x <= sc.Index - nBarsHL.GetInt();
-               x++) {
+          for (int x = lastHighIndex - 1; x <= sc.Index - nBarsHL.GetInt(); x++) {
             retraceDown[x] = retraceDown[lastHighIndex - 2];
           }
           // corregir el up-retracement de este swing
-          float val = sc.Low[lastLowIndex] +
-                      (sc.High[mmIndex] - sc.Low[lastLowIndex]) *
-                          (100 - retracePercent.GetFloat()) / 100;
+          float val = sc.Low[lastLowIndex] + (sc.High[mmIndex] - sc.Low[lastLowIndex]) *
+                                                 (100 - retracePercent.GetFloat()) / 100;
           for (int x = lastLowIndex; x <= sc.Index; x++) {
             retraceUp[x] = val;
           }
@@ -389,17 +517,15 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
         for (int x = mmIndex + 1; x <= sc.Index; x++)
           swingLow = sc.Low[x] < swingLow ? sc.Low[x] : swingLow;
         for (int x = mmIndex; x <= sc.Index; x++)
-          retraceDown[x] = lastHigh - (lastHigh - swingLow) *
-                                          (100 - retracePercent.GetFloat()) /
-                                          100;
+          retraceDown[x] =
+              lastHigh - (lastHigh - swingLow) * (100 - retracePercent.GetFloat()) / 100;
       }
       // busco siguiente Entry OnRetracement
       nearestRetraceDown[sc.Index] = 0;
       double aux = lastHigh;
       for (int x = lastHighIndex; x > 0; x--) {
         aux = sc.High[x] > aux ? sc.High[x] : aux;
-        if (retraceDown[x] > aux && retraceDown[x + 1] == 0 &&
-            retraceDown[x] != 0) {
+        if (retraceDown[x] > aux && retraceDown[x + 1] == 0 && retraceDown[x] != 0) {
           nearestRetraceDown[sc.Index] = retraceDown[x];
           if (nearestRetraceDown[sc.Index] != nearestRetraceDown[sc.Index - 1])
             nearestRetraceDown[sc.Index - 1] = 0;
@@ -412,8 +538,7 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
       // the last low while confirming the new high
       // if(sc.GetLowest(sc.BaseDataIn[SC_LOW], nBarsHL.GetInt() ) >= lastLow)
       // lastHiLoBroken = 0;
-    } else if (sinceLow == nBarsHL.GetInt() &&
-               (lookFor <= 0 || sc.Low[mmIndex] < lastLow)) //)
+    } else if (sinceLow == nBarsHL.GetInt() && (lookFor <= 0 || sc.Low[mmIndex] < lastLow)) //)
     {
       if (lookFor >= 0 && sc.Low[mmIndex] < lastLow) {
         highsLows[lastLowIndex] = 0;
@@ -421,14 +546,12 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
         // copiar hasta el nuevo high el down-retracement anterior al high que
         // ya no vale
         if (retracePercent.GetFloat() > 0) {
-          for (int x = lastLowIndex - 1; x <= sc.Index - nBarsHL.GetInt();
-               x++) {
+          for (int x = lastLowIndex - 1; x <= sc.Index - nBarsHL.GetInt(); x++) {
             retraceUp[x] = retraceUp[lastLowIndex - 2];
           }
           // corregir el down-retracement de este swing
-          float val = sc.High[lastHighIndex] -
-                      (sc.High[lastHighIndex] - sc.Low[mmIndex]) *
-                          (100 - retracePercent.GetFloat()) / 100;
+          float val = sc.High[lastHighIndex] - (sc.High[lastHighIndex] - sc.Low[mmIndex]) *
+                                                   (100 - retracePercent.GetFloat()) / 100;
           for (int x = lastHighIndex; x <= sc.Index; x++) {
             retraceDown[x] = val;
           }
@@ -447,8 +570,7 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
         for (int x = mmIndex + 1; x <= sc.Index; x++)
           swingHigh = sc.High[x] > swingHigh ? sc.High[x] : swingHigh;
         for (int x = mmIndex; x <= sc.Index; x++)
-          retraceUp[x] = lastLow + (swingHigh - lastLow) *
-                                       (100 - retracePercent.GetFloat()) / 100;
+          retraceUp[x] = lastLow + (swingHigh - lastLow) * (100 - retracePercent.GetFloat()) / 100;
       }
 
       // busco siguiente Entry OnRetracement
@@ -475,10 +597,8 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
     // compruebo que no se hayan rebasado los últimos highs/lows sin haber
     // confirmado primero el opuesto. Si se han rebasado, los anulo y corrijo
     // retracements
-    if (sc.High[sc.Index] > lastHigh && lastHighIndex > lastLowIndex &&
-        lastLowIndex > 0 &&
-        sc.NumberOfBarsSinceLowestValue(sc.BaseDataIn[SC_LOW],
-                                        sc.Index - lastHighIndex) >
+    if (sc.High[sc.Index] > lastHigh && lastHighIndex > lastLowIndex && lastLowIndex > 0 &&
+        sc.NumberOfBarsSinceLowestValue(sc.BaseDataIn[SC_LOW], sc.Index - lastHighIndex) >
             nBarsHL.GetInt()) {
       // elimino el último high
       highsLows[lastHighIndex] = 0;
@@ -489,19 +609,15 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
       }
       // corrijo los swings
       swingLow = 0;
-      swingHigh = sc.High[sc.Index - sc.NumberOfBarsSinceHighestValue(
-                                         sc.BaseDataIn[SC_HIGH],
-                                         sc.Index - lastHighIndex)];
+      swingHigh = sc.High[sc.Index - sc.NumberOfBarsSinceHighestValue(sc.BaseDataIn[SC_HIGH],
+                                                                      sc.Index - lastHighIndex)];
       for (int x = lastLowIndex; x <= sc.Index; x++)
-        retraceUp[x] = lastLow + (swingHigh - lastLow) *
-                                     (100 - retracePercent.GetFloat()) / 100;
+        retraceUp[x] = lastLow + (swingHigh - lastLow) * (100 - retracePercent.GetFloat()) / 100;
       // flag para seguir buscando un high
       lookFor = 1;
     }
-    if (sc.Low[sc.Index] < lastLow && lastLowIndex > lastHighIndex &&
-        lastHighIndex > 0 &&
-        sc.NumberOfBarsSinceHighestValue(sc.BaseDataIn[SC_HIGH],
-                                         sc.Index - lastLowIndex) >
+    if (sc.Low[sc.Index] < lastLow && lastLowIndex > lastHighIndex && lastHighIndex > 0 &&
+        sc.NumberOfBarsSinceHighestValue(sc.BaseDataIn[SC_HIGH], sc.Index - lastLowIndex) >
             nBarsHL.GetInt()) {
       // elimino el último low
       highsLows[lastLowIndex] = 0;
@@ -512,12 +628,10 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
       }
       // corrijo los swings
       swingHigh = 0;
-      swingLow = sc.Low[sc.Index -
-                        sc.NumberOfBarsSinceLowestValue(
-                            sc.BaseDataIn[SC_LOW], sc.Index - lastLowIndex)];
+      swingLow = sc.Low[sc.Index - sc.NumberOfBarsSinceLowestValue(sc.BaseDataIn[SC_LOW],
+                                                                   sc.Index - lastLowIndex)];
       for (int x = lastHighIndex; x <= sc.Index; x++)
-        retraceDown[x] = lastHigh - (lastHigh - swingLow) *
-                                        (100 - retracePercent.GetFloat()) / 100;
+        retraceDown[x] = lastHigh - (lastHigh - swingLow) * (100 - retracePercent.GetFloat()) / 100;
       // flag para seguir buscando un low
       lookFor = -1;
     }
@@ -564,8 +678,7 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
           }
         }
         if (!hiBroken) {
-          for (int x = lastHighIndex; x > 0;
-               x--) // antes desde lastHighIndex a secas
+          for (int x = lastHighIndex; x > 0; x--) // antes desde lastHighIndex a secas
           {
             // el OB es la última bullish candle antes del high que nos ha
             // llevado a romper el low
@@ -601,8 +714,7 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
           }
         }
         if (!loBroken) {
-          for (int x = lastLowIndex; x > 0;
-               x--) // antes desde lastLowIndex a secas
+          for (int x = lastLowIndex; x > 0; x--) // antes desde lastLowIndex a secas
           {
             // el OB es la última bearish candle antes del low que nos ha
             // llevado a romper el high
@@ -634,19 +746,24 @@ SCSFExport scsf_SRlevels(SCStudyInterfaceRef sc) {
     if (swingHigh != 0 && sc.High[sc.Index] > swingHigh) {
       swingHigh = sc.High[sc.Index];
       for (int x = lastLowIndex; x <= sc.Index; x++)
-        retraceUp[x] = lastLow + (swingHigh - lastLow) *
-                                     (100 - retracePercent.GetFloat()) / 100;
+        retraceUp[x] = lastLow + (swingHigh - lastLow) * (100 - retracePercent.GetFloat()) / 100;
     }
     if (swingLow != 0 && sc.Low[sc.Index] < swingLow) {
       swingLow = sc.Low[sc.Index];
       for (int x = lastHighIndex; x <= sc.Index; x++)
-        retraceDown[x] = lastHigh - (lastHigh - swingLow) *
-                                        (100 - retracePercent.GetFloat()) / 100;
+        retraceDown[x] = lastHigh - (lastHigh - swingLow) * (100 - retracePercent.GetFloat()) / 100;
     }
   }
 
   // flag última barra procesada
   lastIndex = sc.Index;
+}
+
+int SecondsPerDay(int useSecondTimes, int start1, int end1) {
+  int secsPerDay = useSecondTimes == 1 ? 60 * 60 * 24 : end1 - start1 + 1;
+
+  secsPerDay = secsPerDay > 1 ? secsPerDay : 60 * 60 * 24;
+  return secsPerDay;
 }
 
 SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
@@ -728,19 +845,19 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     barsInChart.Name = "Max Number of bars in chart";
     barsInChart.SetInt(1000);
 
-    sc.Input[toLoadStart].Name = "Days To Load-1min || below";
+    sc.Input[toLoadStart].Name = "Days To Load-1min or below";
     sc.Input[toLoadStart].SetInt(1);
     sc.Input[toLoadStart].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 1].Name = "Days To Load-5min || below";
+    sc.Input[toLoadStart + 1].Name = "Days To Load-5min or below";
     sc.Input[toLoadStart + 1].SetInt(4);
     sc.Input[toLoadStart + 1].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 2].Name = "Days To Load-30min || below";
+    sc.Input[toLoadStart + 2].Name = "Days To Load-30min or below";
     sc.Input[toLoadStart + 2].SetInt(14);
     sc.Input[toLoadStart + 2].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 3].Name = "Days To Load-1H(65m) || below";
+    sc.Input[toLoadStart + 3].Name = "Days To Load-1H(65m) or below";
     sc.Input[toLoadStart + 3].SetInt(31);
     sc.Input[toLoadStart + 3].SetIntLimits(1, 10000);
 
@@ -767,8 +884,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     vbpID.Name = "VbP ID to Set \"Separate Evening Sess\" param";
     vbpID.SetStudyID(0);
 
-    for (int x = hideStudiesStart; x < hideStudiesStart + hideStudiesAmt * 2;
-         x = x + 2) {
+    for (int x = hideStudiesStart; x < hideStudiesStart + hideStudiesAmt * 2; x = x + 2) {
       sc.Input[x].Name.Format("Hide Study %i", (x - hideStudiesStart) / 2 + 1);
       sc.Input[x].SetStudyID(0);
 
@@ -802,9 +918,14 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     if (BarPeriod.ChartDataType == INTRADAY_DATA) {
       int actualTF = BarPeriod.IntradayChartBarPeriodParameter1;
 
+      // get seconds per day to check the day is divisible by the new timeframe
+      int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
       // loop through the timeframe list to find the next timeframe
       for (int i = TFstart; i < TFstart + TFamt; i++) {
         if (sc.Input[i].GetInt() <= actualTF)
+          continue;
+        // the day must be evenly divisible by the new timeframe
+        if (secsPerDay % sc.Input[i].GetInt() != 0)
           continue;
 
         nextTF = sc.Input[i].GetInt();
@@ -817,8 +938,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
       if (nextTF == 0 && gotoHistorical.GetYesNo() == 1) {
         BarPeriod.ChartDataType = DAILY_DATA;
         BarPeriod.HistoricalChartBarPeriodType =
-            actualTF == 86400 ? HISTORICAL_CHART_PERIOD_WEEKLY
-                              : HISTORICAL_CHART_PERIOD_DAYS;
+            actualTF == 86400 ? HISTORICAL_CHART_PERIOD_WEEKLY : HISTORICAL_CHART_PERIOD_DAYS;
         BarPeriod.HistoricalChartDaysPerBar = 1;
 
         nextTF = -1; // -1 means daily chart || higher
@@ -832,9 +952,8 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     else {
       nextTF = -1; // -1 means daily chart || higher
       if (BarPeriod.HistoricalChartBarPeriodType < 5)
-        BarPeriod.HistoricalChartBarPeriodType =
-            static_cast<HistoricalChartBarPeriodEnum>(
-                static_cast<int>(BarPeriod.HistoricalChartBarPeriodType) + 1);
+        BarPeriod.HistoricalChartBarPeriodType = static_cast<HistoricalChartBarPeriodEnum>(
+            static_cast<int>(BarPeriod.HistoricalChartBarPeriodType) + 1);
       else
         nextTF = 0; // if already at highest TF possible do nothing
     }
@@ -844,8 +963,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
       sc.SetBarPeriodParameters(BarPeriod);
       if (useSpacing.GetYesNo() == 1)
         sc.ChartBarSpacing =
-            minThreshold.GetInt() +
-            (int)((maxThreshold.GetInt() - minThreshold.GetInt()) * 0.2);
+            minThreshold.GetInt() + (int)((maxThreshold.GetInt() - minThreshold.GetInt()) * 0.2);
     }
 
     // deactivate custom button
@@ -862,20 +980,19 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     // then change to the highest intraday
     if (BarPeriod.ChartDataType == DAILY_DATA) {
       nextTF = -1; // -1 means daily chart || higher
-      HistoricalChartBarPeriodEnum thresholdToIntraday =
-          static_cast<HistoricalChartBarPeriodEnum>(
-              sc.Input[TFstart + TFamt - 1].GetInt() == 86400 &&
-                      gotoHistorical.GetYesNo() == 1
-                  ? 2
-                  : 1);
+      HistoricalChartBarPeriodEnum thresholdToIntraday = static_cast<HistoricalChartBarPeriodEnum>(
+          sc.Input[TFstart + TFamt - 1].GetInt() == 86400 && gotoHistorical.GetYesNo() == 1 ? 2
+                                                                                            : 1);
       if (BarPeriod.HistoricalChartBarPeriodType > thresholdToIntraday)
-        BarPeriod.HistoricalChartBarPeriodType =
-            static_cast<HistoricalChartBarPeriodEnum>(
-                static_cast<int>(BarPeriod.HistoricalChartBarPeriodType) - 1);
+        BarPeriod.HistoricalChartBarPeriodType = static_cast<HistoricalChartBarPeriodEnum>(
+            static_cast<int>(BarPeriod.HistoricalChartBarPeriodType) - 1);
       else if (gotoHistorical.GetYesNo() == 1) {
         BarPeriod.ChartDataType = INTRADAY_DATA;
+        // get seconds per day to check the day is divisible by the new
+        // timeframe
+        int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
         for (int x = TFstart + TFamt - 1; x >= TFstart; x--) {
-          if (sc.Input[x].GetInt() != 0) {
+          if (sc.Input[x].GetInt() != 0 && secsPerDay % sc.Input[x].GetInt() == 0) {
             nextTF = sc.Input[x].GetInt();
             break;
           }
@@ -890,12 +1007,17 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     // if intraday, go to next lower timeframe
     else {
       int actualTF = BarPeriod.IntradayChartBarPeriodParameter1;
+      // get seconds per day to check the day is divisible by the new
+      // timeframe
+      int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
 
       // loop through the timeframe list to find the next lower timeframe
       for (int i = TFstart + TFamt - 1; i >= TFstart; i--) {
         if (sc.Input[i].GetInt() >= actualTF || sc.Input[i].GetInt() == 0)
           continue;
-
+        // the day must be evenly divisible by the new timeframe
+        if (secsPerDay % sc.Input[i].GetInt() != 0)
+          continue;
         nextTF = sc.Input[i].GetInt();
         BarPeriod.IntradayChartBarPeriodParameter1 = nextTF;
         break;
@@ -907,8 +1029,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
       sc.SetBarPeriodParameters(BarPeriod);
       if (useSpacing.GetYesNo() == 1)
         sc.ChartBarSpacing =
-            maxThreshold.GetInt() -
-            (int)((maxThreshold.GetInt() - minThreshold.GetInt()) * 0.2);
+            maxThreshold.GetInt() - (int)((maxThreshold.GetInt() - minThreshold.GetInt()) * 0.2);
       // if(useSpacing.GetYesNo() == 1) sc.ChartBarSpacing =
       // minThreshold.GetInt() + (int) ( (maxThreshold.GetInt() -
       // minThreshold.GetInt() ) * 0.2);
@@ -919,15 +1040,16 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
   }
 
   // set DaysToLoad according to new timeframe
-  if (nextTF >
-      0) // days to load for historical bars has been explicitly set above
+  if (nextTF > 0) // days to load for historical bars has been explicitly set above
   {
     // if setting with number of bars in chart
     if (setDaysToLoad.GetIndex() == 1) {
-      int secsPerDay = sc.UseSecondStartEndTimes == 1
-                           ? 3600 * 24
-                           : sc.EndTime1 - sc.StartTime1 + 1;
-
+      // int secsPerDay = sc.UseSecondStartEndTimes == 1
+      //                      ? 60 * 60 * 24
+      //                      : sc.EndTime1 - sc.StartTime1 + 1;
+      //
+      // secsPerDay = secsPerDay > 1 ? secsPerDay : 60 * 60 * 24;
+      int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
       int barsPerDay = sc.Round(((float)secsPerDay) / nextTF);
 
       int nDaysToLoad = sc.Round(((float)barsInChart.GetInt()) / barsPerDay);
@@ -938,12 +1060,11 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     }
     // if setting depending on timeframe
     else if (setDaysToLoad.GetIndex() == 2) {
-      sc.DaysToLoadInChart = nextTF > 3900 ? sc.Input[toLoadStart + 4].GetInt()
-                             : nextTF > 1800
-                                 ? sc.Input[toLoadStart + 3].GetInt()
-                             : nextTF > 300 ? sc.Input[toLoadStart + 2].GetInt()
-                             : nextTF > 60  ? sc.Input[toLoadStart + 1].GetInt()
-                                            : sc.Input[toLoadStart].GetInt();
+      sc.DaysToLoadInChart = nextTF > 3900   ? sc.Input[toLoadStart + 4].GetInt()
+                             : nextTF > 1800 ? sc.Input[toLoadStart + 3].GetInt()
+                             : nextTF > 300  ? sc.Input[toLoadStart + 2].GetInt()
+                             : nextTF > 60   ? sc.Input[toLoadStart + 1].GetInt()
+                                             : sc.Input[toLoadStart].GetInt();
     }
   }
 
@@ -958,8 +1079,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     }
 
     // hide || show studies
-    for (int x = hideStudiesStart; x < hideStudiesStart + hideStudiesAmt * 2;
-         x = x + 2) {
+    for (int x = hideStudiesStart; x < hideStudiesStart + hideStudiesAmt * 2; x = x + 2) {
       studyId = sc.Input[x].GetStudyID();
       if (studyId != 0) {
         int visib = nextTF >= sc.Input[x + 1].GetInt() ? 0 : 1;
@@ -1002,14 +1122,12 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     sc.GlobalDisplayStudySubgraphsNameAndValue = 0;
     sc.DrawStudyUnderneathMainPriceGraph = 1;
     // set initial transparency
-    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID,
-                                      92);
+    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID, 92);
 
     hiGraph.Name = "Last High";
     hiGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
     hiGraph.LineWidth = 10;
-    hiGraph.LineLabel =
-        LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
+    hiGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     hiGraph.PrimaryColor = RGB(0, 0, 0);
     hiGraph.DrawZeros = 0;
     hiGraph.ShortName = "▼ HI";
@@ -1017,8 +1135,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     loGraph.Name = "Last Low";
     loGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
     loGraph.LineWidth = 10;
-    loGraph.LineLabel =
-        LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
+    loGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     loGraph.PrimaryColor = RGB(0, 0, 0);
     loGraph.DrawZeros = 0;
     loGraph.ShortName = "▲ LO";
@@ -1026,8 +1143,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     tHiGraph.Name = "Temporary High";
     tHiGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
     tHiGraph.LineWidth = 6;
-    tHiGraph.LineLabel =
-        LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
+    tHiGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     tHiGraph.PrimaryColor = RGB(0, 145, 215);
     tHiGraph.DrawZeros = 0;
     tHiGraph.ShortName = "▼t.hi";
@@ -1035,16 +1151,14 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     tLoGraph.Name = "Temporary Low";
     tLoGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
     tLoGraph.LineWidth = 6;
-    tLoGraph.LineLabel =
-        LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
+    tLoGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     tLoGraph.PrimaryColor = RGB(255, 0, 0);
     tLoGraph.DrawZeros = 0;
     tLoGraph.ShortName = "▲t.lo";
 
     // old highs will copy these properties
     prevHisGraphs.Name = "Previous Highs";
-    prevHisGraphs.DrawStyle =
-        DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP; // DRAWSTYLE_TRIANGLE_DOWN;
+    prevHisGraphs.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP; // DRAWSTYLE_TRIANGLE_DOWN;
     prevHisGraphs.LineWidth = 8;
     prevHisGraphs.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT;
     prevHisGraphs.PrimaryColor = RGB(255, 0, 0);
@@ -1056,8 +1170,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
 
     // old lows will copy these properties
     prevLosGraphs.Name = "Previous Lows";
-    prevLosGraphs.DrawStyle =
-        DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM; // DRAWSTYLE_TRIANGLE_UP;
+    prevLosGraphs.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM; // DRAWSTYLE_TRIANGLE_UP;
     prevLosGraphs.LineWidth = 8;
     prevLosGraphs.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT;
     prevLosGraphs.PrimaryColor = RGB(0, 145, 215);
@@ -1113,49 +1226,37 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       if (x <= nHiLos.GetInt()) {
         // new subgraphs for previous highs
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].Name.Format("High %i", x);
-        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].DrawStyle =
-            prevHisGraphs.DrawStyle;
-        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].LineWidth =
-            prevHisGraphs.LineWidth;
-        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].LineLabel =
-            prevHisGraphs.LineLabel;
+        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].DrawStyle = prevHisGraphs.DrawStyle;
+        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].LineWidth = prevHisGraphs.LineWidth;
+        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].LineLabel = prevHisGraphs.LineLabel;
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor =
             nHiLos.GetInt() == 1 || interpColors.GetYesNo() == 0
                 ? prevHisGraphs.PrimaryColor
-                : sc.RGBInterpolate(
-                      prevHisGraphs.PrimaryColor, prevHisGraphs.SecondaryColor,
-                      sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
+                : sc.RGBInterpolate(prevHisGraphs.PrimaryColor, prevHisGraphs.SecondaryColor,
+                                    sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].DrawZeros = 0;
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].ShortName.Format(
             prevHisGraphs.ShortName + " %i " + prevHisGraphs.ShortName, x);
-        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].UseLabelsColor =
-            prevHisGraphs.UseLabelsColor;
-        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].LabelsColor =
-            prevHisGraphs.LabelsColor;
+        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].UseLabelsColor = prevHisGraphs.UseLabelsColor;
+        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].LabelsColor = prevHisGraphs.LabelsColor;
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].UseTransparentLabelBackground =
             prevHisGraphs.UseTransparentLabelBackground;
 
         // new subgraphs for previous lows
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].Name.Format("Low %i", x);
-        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].DrawStyle =
-            prevLosGraphs.DrawStyle;
-        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].LineWidth =
-            prevLosGraphs.LineWidth;
-        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].LineLabel =
-            prevLosGraphs.LineLabel;
+        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].DrawStyle = prevLosGraphs.DrawStyle;
+        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].LineWidth = prevLosGraphs.LineWidth;
+        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].LineLabel = prevLosGraphs.LineLabel;
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].PrimaryColor =
             nHiLos.GetInt() == 1 || interpColors.GetYesNo() == 0
                 ? prevLosGraphs.PrimaryColor
-                : sc.RGBInterpolate(
-                      prevLosGraphs.PrimaryColor, prevLosGraphs.SecondaryColor,
-                      sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
+                : sc.RGBInterpolate(prevLosGraphs.PrimaryColor, prevLosGraphs.SecondaryColor,
+                                    sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].DrawZeros = 0;
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].ShortName.Format(
             prevLosGraphs.ShortName + " %i " + prevLosGraphs.ShortName, x);
-        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].UseLabelsColor =
-            prevLosGraphs.UseLabelsColor;
-        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].LabelsColor =
-            prevLosGraphs.LabelsColor;
+        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].UseLabelsColor = prevLosGraphs.UseLabelsColor;
+        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].LabelsColor = prevLosGraphs.LabelsColor;
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].UseTransparentLabelBackground =
             prevLosGraphs.UseTransparentLabelBackground;
       } else
@@ -1208,14 +1309,12 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       // IN THIS BAR define VAP for historical calculations
       s_VolumeAtPriceV2 *p_VolumeAtPrice = NULL;
       // check there is VolumeAtPrice data
-      if (static_cast<int>(sc.VolumeAtPriceForBars->GetNumberOfBars()) <
-          sc.ArraySize)
+      if (static_cast<int>(sc.VolumeAtPriceForBars->GetNumberOfBars()) < sc.ArraySize)
         return;
       int VAPSizeAtBarIndex = sc.VolumeAtPriceForBars->GetSizeAtBarIndex(i);
 
       for (int VAPIndex = 0; VAPIndex < VAPSizeAtBarIndex; VAPIndex++) {
-        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(i, VAPIndex,
-                                                           &p_VolumeAtPrice))
+        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(i, VAPIndex, &p_VolumeAtPrice))
           break;
 
         if (p_VolumeAtPrice)
@@ -1226,8 +1325,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       }
 
       for (int VAPIndex = VAPSizeAtBarIndex - 1; VAPIndex >= 0; VAPIndex--) {
-        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(i, VAPIndex,
-                                                           &p_VolumeAtPrice))
+        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(i, VAPIndex, &p_VolumeAtPrice))
           break;
 
         if (p_VolumeAtPrice)
@@ -1250,8 +1348,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
         lastTradeAtBid = TimeSales[TSIndex].Bid * sc.RealTimePriceMultiplier;
 
         // see if this trade broke the current low and clear current trades
-        if (clear.GetYesNo() && lastTradeAtBid < loGraph[i] &&
-            lowBroken == false) {
+        if (clear.GetYesNo() && lastTradeAtBid < loGraph[i] && lowBroken == false) {
           sc.ClearCurrentTradedBidAskVolume();
           lowBroken = true;
         }
@@ -1259,8 +1356,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
         lastTradeAtAsk = TimeSales[TSIndex].Ask * sc.RealTimePriceMultiplier;
 
         // see if this trade borke the current high and clear current trades
-        if (clear.GetYesNo() && lastTradeAtAsk > hiGraph[i] &&
-            highBroken == false) {
+        if (clear.GetYesNo() && lastTradeAtAsk > hiGraph[i] && highBroken == false) {
           sc.ClearCurrentTradedBidAskVolume();
           highBroken = true;
         }
@@ -1270,13 +1366,11 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     // HAS A NEW HIGH || LOW BEEN CONFIRMED?
     // if there is a new confirmed high (there must be trades at ask at newHi -
     // nTicks)
-    if (newHi != 0 &&
-        lastTradeAtAsk <= (newHi - nTicks.GetInt() * sc.TickSize)) {
+    if (newHi != 0 && lastTradeAtAsk <= (newHi - nTicks.GetInt() * sc.TickSize)) {
       // new confirmed Hi
       // move highs to previous highs subgraphs and change their number display
       for (int x = nHiLos.GetInt() - 1; x > 0; x--) {
-        sc.Subgraph[FIRST_P_HIGH - 2 * x][i] =
-            sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)][i];
+        sc.Subgraph[FIRST_P_HIGH - 2 * x][i] = sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)][i];
       }
 
       // move current high to first old high
@@ -1293,12 +1387,10 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     } else
       // if there is a new confirmed low (there must be trades at bid at newLo +
       // nTicks)
-      if (newLo != 0 &&
-          lastTradeAtBid >= (newLo + nTicks.GetInt() * sc.TickSize)) {
+      if (newLo != 0 && lastTradeAtBid >= (newLo + nTicks.GetInt() * sc.TickSize)) {
         // new confirmed Lo
         for (int x = nHiLos.GetInt() - 1; x > 0; x--) {
-          sc.Subgraph[FIRST_P_LOW - 2 * x][i] =
-              sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i];
+          sc.Subgraph[FIRST_P_LOW - 2 * x][i] = sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i];
         }
 
         // move current high to first old high
@@ -1435,8 +1527,7 @@ SCSFExport scsf_AutoMA(SCStudyInterfaceRef sc) {
 
       for (int x = sc.ArraySize - 2; x >= 0; x--) {
         if (sc.BaseDateTimeIn[x] <= yesterday &&
-            sc.BaseDateTimeIn[x].GetTimeInSeconds() <=
-                lastBarTime.GetTimeInSeconds())
+            sc.BaseDateTimeIn[x].GetTimeInSeconds() <= lastBarTime.GetTimeInSeconds())
           break;
         MAperiod++;
         // if no new day found in the whole array, set period to zero to return
@@ -1507,25 +1598,21 @@ SCSFExport scsf_AutoMA(SCStudyInterfaceRef sc) {
 
   sc.EarliestUpdateSubgraphDataArrayIndex = CalculationStartIndex;
 
-  for (int BarIndex = CalculationStartIndex; BarIndex < sc.ArraySize;
-       BarIndex++) {
-    SCFloatArrayRef HighArray =
-        sc.BaseDataIn[Input_TopBandInputData.GetInputDataIndex()];
-    SCFloatArrayRef LowArray =
-        sc.BaseDataIn[Input_BottomBandInputData.GetInputDataIndex()];
+  for (int BarIndex = CalculationStartIndex; BarIndex < sc.ArraySize; BarIndex++) {
+    SCFloatArrayRef HighArray = sc.BaseDataIn[Input_TopBandInputData.GetInputDataIndex()];
+    SCFloatArrayRef LowArray = sc.BaseDataIn[Input_BottomBandInputData.GetInputDataIndex()];
 
-    sc.MovingAverage(HighArray, Subgraph_TopMovAvg,
-                     Input_MovAvgType.GetMovAvgType(), BarIndex, MAperiod);
+    sc.MovingAverage(HighArray, Subgraph_TopMovAvg, Input_MovAvgType.GetMovAvgType(), BarIndex,
+                     MAperiod);
     sc.StdDeviation(HighArray, Subgraph_Temp4, BarIndex, MAperiod);
 
-    sc.MovingAverage(LowArray, Subgraph_BottomMovAvg,
-                     Input_MovAvgType.GetMovAvgType(), BarIndex, MAperiod);
+    sc.MovingAverage(LowArray, Subgraph_BottomMovAvg, Input_MovAvgType.GetMovAvgType(), BarIndex,
+                     MAperiod);
     sc.StdDeviation(LowArray, Subgraph_Temp5, BarIndex, MAperiod);
 
     for (int x = 1; x <= 3; x++) {
       // subgraph values for lines
-      sc.Subgraph[5 + x][BarIndex] =
-          (Subgraph_Temp4[BarIndex] * x) + Subgraph_TopMovAvg[BarIndex];
+      sc.Subgraph[5 + x][BarIndex] = (Subgraph_Temp4[BarIndex] * x) + Subgraph_TopMovAvg[BarIndex];
       sc.Subgraph[8 + x][BarIndex] =
           (Subgraph_Temp5[BarIndex] * (-x)) + Subgraph_BottomMovAvg[BarIndex];
       // subgraph values for fills
@@ -1625,8 +1712,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
     levelFills.SecondaryColor = RGB(144, 191, 249);
 
     // set initial transparency for extension fills
-    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID,
-                                      90);
+    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID, 90);
 
     // reset lastBar
     lastBar = -1;
@@ -1652,8 +1738,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
   int &downFVGsNextID = sc.GetPersistentInt(-4);
 
   // full recalculation
-  if (sc.Index == 0 ||
-      lastBar == -1) // This indicates a study is being recalculated.
+  if (sc.Index == 0 || lastBar == -1) // This indicates a study is being recalculated.
   {
     // When there is a full recalculation of the study,
     // reset the persistent variables we are using
@@ -1679,8 +1764,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
     for (int x = downFVGsNextID + 1; x <= -firstUntested; x++) {
       s_UseTool Rect;
       Rect.Clear();
-      bool getLine =
-          sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
+      bool getLine = sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
       if (getLine) {
         double begin = Rect.BeginValue;
         // if this FVG has just been filled
@@ -1702,23 +1786,19 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
 
           // if showing filled FVGs, delete filled FVGs older than showNfilled
           if (showNfilled.GetInt() > 0) {
-            for (int i = -firstTested; i > -firstTested - showNfilled.GetInt();
-                 i--) {
+            for (int i = -firstTested; i > -firstTested - showNfilled.GetInt(); i--) {
               if (i == -firstTested)
-                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                         sc.GetPersistentInt(i));
+                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, sc.GetPersistentInt(i));
               if (i > -firstTested - showNfilled.GetInt() + 1)
                 sc.GetPersistentInt(i) = sc.GetPersistentInt(i - 1);
             }
 
             // save the newly filled FVG ID to be able to delete it later
-            sc.GetPersistentInt(-firstTested - showNfilled.GetInt() + 1) =
-                Rect.LineNumber;
+            sc.GetPersistentInt(-firstTested - showNfilled.GetInt() + 1) = Rect.LineNumber;
           }
           // if not, delete the newly filled gap
           else
-            sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                     Rect.LineNumber);
+            sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, Rect.LineNumber);
 
         }
         // if not filled
@@ -1740,8 +1820,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
     for (int x = upFVGsNextID - 1; x >= firstUntested; x--) {
       s_UseTool Rect;
       Rect.Clear();
-      bool getLine =
-          sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
+      bool getLine = sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
       if (getLine) {
         double begin = Rect.BeginValue;
         // if this FVG has just been filled
@@ -1763,23 +1842,19 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
 
           // if showing filled FVGs, delete filled FVGs older than showNfilled
           if (showNfilled.GetInt() > 0) {
-            for (int i = firstTested; i < firstTested + showNfilled.GetInt();
-                 i++) {
+            for (int i = firstTested; i < firstTested + showNfilled.GetInt(); i++) {
               if (i == firstTested)
-                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                         sc.GetPersistentInt(i));
+                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, sc.GetPersistentInt(i));
               if (i < firstTested + showNfilled.GetInt() - 1)
                 sc.GetPersistentInt(i) = sc.GetPersistentInt(i + 1);
             }
 
             // save the newly filled FVG ID to be able to delete it later
-            sc.GetPersistentInt(firstTested + showNfilled.GetInt() - 1) =
-                Rect.LineNumber;
+            sc.GetPersistentInt(firstTested + showNfilled.GetInt() - 1) = Rect.LineNumber;
           }
           // if not, delete the newly filled gap
           else
-            sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                     Rect.LineNumber);
+            sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, Rect.LineNumber);
         }
         // if not filled
         else {
@@ -1797,10 +1872,10 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
     //**** HIGHS & LOWS CALCULATION
     int mmIndex = sc.Index - nBarsHL.GetInt();
     bool newLow = false, newHigh = false;
-    int sinceHigh = sc.NumberOfBarsSinceHighestValue(
-        sc.BaseDataIn[SC_HIGH], sc.Index - 1, nBarsHL.GetInt());
-    int sinceLow = sc.NumberOfBarsSinceLowestValue(
-        sc.BaseDataIn[SC_LOW], sc.Index - 1, nBarsHL.GetInt());
+    int sinceHigh =
+        sc.NumberOfBarsSinceHighestValue(sc.BaseDataIn[SC_HIGH], sc.Index - 1, nBarsHL.GetInt());
+    int sinceLow =
+        sc.NumberOfBarsSinceLowestValue(sc.BaseDataIn[SC_LOW], sc.Index - 1, nBarsHL.GetInt());
 
     // seteo highs lows buffer initially to zero in the just completed bar
     highsLows[sc.Index - 1] = 0;
@@ -1856,8 +1931,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
 
     //**** LOOK FOR AND DRAW LEVELS: FVGs || HIGHS & LOWS
     // GAPUP || NEW LOW
-    if ((levelType.GetIndex() == 0 &&
-         sc.Low[sc.Index - 1] > sc.High[sc.Index - 3] &&
+    if ((levelType.GetIndex() == 0 && sc.Low[sc.Index - 1] > sc.High[sc.Index - 3] &&
          sc.Low[sc.Index - 2] < sc.Low[sc.Index - 1] &&
          sc.High[sc.Index - 2] >= sc.Low[sc.Index - 1]) ||
         (levelType.GetIndex() > 0 && newLow)) {
@@ -1882,27 +1956,26 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
             break;
         }
         // define start and end of the extension
-        float begin = type == 1 && lastHigh != 0 && percent.GetInt() > 0
-                          ? sc.Low[mmIndex] - (lastHigh - sc.Low[mmIndex]) *
-                                                  (percent.GetInt() / 100.0)
-                      : type == 2 ? sc.Low[mmIndex]
-                      : type == 3 ? 2 * sc.Low[mmIndex] - sc.High[mmIndex]
-                      : type == 4 ? sc.Low[obIndex]
-                                  : sc.Low[mmIndex];
+        float begin =
+            type == 1 && lastHigh != 0 && percent.GetInt() > 0
+                ? sc.Low[mmIndex] - (lastHigh - sc.Low[mmIndex]) * (percent.GetInt() / 100.0)
+            : type == 2 ? sc.Low[mmIndex]
+            : type == 3 ? 2 * sc.Low[mmIndex] - sc.High[mmIndex]
+            : type == 4 ? sc.Low[obIndex]
+                        : sc.Low[mmIndex];
 
-        float end = type == 1 && percent.GetInt() < 0
-                        ? sc.Low[mmIndex] - (lastHigh - sc.Low[mmIndex]) *
-                                                (percent.GetInt() / 100.0)
-                    : type == 2 ? sc.High[mmIndex]
-                    : type == 4 ? sc.Close[obIndex]
-                                : sc.Low[mmIndex];
+        float end =
+            type == 1 && percent.GetInt() < 0
+                ? sc.Low[mmIndex] - (lastHigh - sc.Low[mmIndex]) * (percent.GetInt() / 100.0)
+            : type == 2 ? sc.High[mmIndex]
+            : type == 4 ? sc.Close[obIndex]
+                        : sc.Low[mmIndex];
 
         // set the rectangle
         Rect.BeginIndex = type == 4 ? obIndex : mmIndex;
-        Rect.BeginValue = type != 4 || obIndex != sc.Index
-                              ? begin
-                              : 0; // if looking for order block and none has
-                                   // been found, set to zero
+        Rect.BeginValue =
+            type != 4 || obIndex != sc.Index ? begin : 0; // if looking for order block and none has
+                                                          // been found, set to zero
         Rect.EndValue = end;
         // if highlighting order blocks and any bar since the low has already
         // broken the order block, do not extend rectangle if(type == 4 &&
@@ -1916,10 +1989,8 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
         Rect.Color = levelLines.SecondaryColor;
         Rect.SecondaryColor = levelFills.SecondaryColor;
         Rect.TransparencyLevel =
-            levelFills.DrawStyle != DRAWSTYLE_HIDDEN &&
-                    levelFills.DrawStyle != DRAWSTYLE_IGNORE
-                ? sc.GetChartStudyTransparencyLevel(sc.ChartNumber,
-                                                    sc.StudyGraphInstanceID)
+            levelFills.DrawStyle != DRAWSTYLE_HIDDEN && levelFills.DrawStyle != DRAWSTYLE_IGNORE
+                ? sc.GetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID)
                 : 100;
         Rect.NoVerticalOutline = 1;
         Rect.LineWidth = levelLines.LineWidth;
@@ -1935,8 +2006,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
         if (upFVGsNextID >= firstUntested + showNunfilled.GetInt()) {
           Rect.Clear();
           bool getLine = sc.GetACSDrawingByLineNumber(
-              0, sc.GetPersistentInt(upFVGsNextID - showNunfilled.GetInt()),
-              Rect);
+              0, sc.GetPersistentInt(upFVGsNextID - showNunfilled.GetInt()), Rect);
           Rect.HideDrawing = 1;
           Rect.AddMethod = UTAM_ADD_OR_ADJUST;
           sc.UseTool(Rect);
@@ -1948,8 +2018,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
     }
 
     // GAPDOWN || NEW HIGH
-    if ((levelType.GetIndex() == 0 &&
-         sc.High[sc.Index - 1] < sc.Low[sc.Index - 3] &&
+    if ((levelType.GetIndex() == 0 && sc.High[sc.Index - 1] < sc.Low[sc.Index - 3] &&
          sc.High[sc.Index - 2] > sc.High[sc.Index - 1] &&
          sc.Low[sc.Index - 2] <= sc.High[sc.Index - 1]) ||
         (levelType.GetIndex() > 0 && newHigh)) {
@@ -1974,27 +2043,26 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
             break;
         }
         // define start and end of the extension
-        float begin = type == 1 && lastLow != 0 && percent.GetInt() > 0
-                          ? sc.High[mmIndex] + (sc.High[mmIndex] - lastLow) *
-                                                   (percent.GetInt() / 100.0)
-                      : type == 2 ? sc.High[mmIndex]
-                      : type == 3 ? 2 * sc.High[mmIndex] - sc.Low[mmIndex]
-                      : type == 4 ? sc.High[obIndex]
-                                  : sc.High[mmIndex];
+        float begin =
+            type == 1 && lastLow != 0 && percent.GetInt() > 0
+                ? sc.High[mmIndex] + (sc.High[mmIndex] - lastLow) * (percent.GetInt() / 100.0)
+            : type == 2 ? sc.High[mmIndex]
+            : type == 3 ? 2 * sc.High[mmIndex] - sc.Low[mmIndex]
+            : type == 4 ? sc.High[obIndex]
+                        : sc.High[mmIndex];
 
-        float end = type == 1 && percent.GetInt() < 0
-                        ? sc.High[mmIndex] + (sc.High[mmIndex] - lastLow) *
-                                                 (percent.GetInt() / 100.0)
-                    : type == 2 ? sc.Low[mmIndex]
-                    : type == 4 ? sc.Close[obIndex]
-                                : sc.High[mmIndex];
+        float end =
+            type == 1 && percent.GetInt() < 0
+                ? sc.High[mmIndex] + (sc.High[mmIndex] - lastLow) * (percent.GetInt() / 100.0)
+            : type == 2 ? sc.Low[mmIndex]
+            : type == 4 ? sc.Close[obIndex]
+                        : sc.High[mmIndex];
 
         // set the rectangle
         Rect.BeginIndex = type == 4 ? obIndex : mmIndex;
-        Rect.BeginValue = type != 4 || obIndex != sc.Index
-                              ? begin
-                              : 0; // if looking for order block and none has
-                                   // been found, set to zero
+        Rect.BeginValue =
+            type != 4 || obIndex != sc.Index ? begin : 0; // if looking for order block and none has
+                                                          // been found, set to zero
         Rect.EndValue = end;
         // if highlighting order blocks and any bar since the high has already
         // broken the order block, do not extend rectangle if(type == 4 &&
@@ -2008,10 +2076,8 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
         Rect.Color = levelLines.PrimaryColor;
         Rect.SecondaryColor = levelFills.PrimaryColor;
         Rect.TransparencyLevel =
-            levelFills.DrawStyle != DRAWSTYLE_HIDDEN &&
-                    levelFills.DrawStyle != DRAWSTYLE_IGNORE
-                ? sc.GetChartStudyTransparencyLevel(sc.ChartNumber,
-                                                    sc.StudyGraphInstanceID)
+            levelFills.DrawStyle != DRAWSTYLE_HIDDEN && levelFills.DrawStyle != DRAWSTYLE_IGNORE
+                ? sc.GetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID)
                 : 100;
         Rect.NoVerticalOutline = 1;
         Rect.LineWidth = levelLines.LineWidth;
@@ -2027,8 +2093,7 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
         if (downFVGsNextID <= -firstUntested - showNunfilled.GetInt()) {
           Rect.Clear();
           bool getLine = sc.GetACSDrawingByLineNumber(
-              0, sc.GetPersistentInt(downFVGsNextID + showNunfilled.GetInt()),
-              Rect);
+              0, sc.GetPersistentInt(downFVGsNextID + showNunfilled.GetInt()), Rect);
           Rect.HideDrawing = 1;
           Rect.AddMethod = UTAM_ADD_OR_ADJUST;
           sc.UseTool(Rect);
@@ -2111,10 +2176,8 @@ SCSFExport scsf_HisLos(SCStudyInterfaceRef sc) {
     int mmIndex = sc.Index - nBarsHL.GetInt();
     ;
 
-    float highest =
-        sc.GetHighest(sc.BaseDataIn[SC_HIGH], 2 * nBarsHL.GetInt() + 1);
-    float lowest =
-        sc.GetLowest(sc.BaseDataIn[SC_LOW], 2 * nBarsHL.GetInt() + 1);
+    float highest = sc.GetHighest(sc.BaseDataIn[SC_HIGH], 2 * nBarsHL.GetInt() + 1);
+    float lowest = sc.GetLowest(sc.BaseDataIn[SC_LOW], 2 * nBarsHL.GetInt() + 1);
 
     //** new high
     if (highest == sc.High[mmIndex]) {
@@ -2197,58 +2260,48 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
     sc.DisplayStudyInputValues = 0;
 
     TFtype.Name = "Timeframe to calculate FVGs for";
-    TFtype.SetCustomInputStrings(
-        "Chart Timeframe;Higher TF from list > mult * chartTF");
+    TFtype.SetCustomInputStrings("Chart Timeframe;Higher TF from list > mult * chartTF");
     TFtype.SetCustomInputIndex(0);
 
     TFmult.Name = "---HTF: Chart TF multiplier: HTF > mult*chart TF";
     TFmult.SetInt(3);
     TFmult.SetIntLimits(1, 1000);
 
-    sc.Input[TFlistStart].Name =
-        "---HTF: First Intraday HTF (secs/vol/trades, 0=don't use)";
+    sc.Input[TFlistStart].Name = "---HTF: First Intraday HTF (secs/vol/trades, 0=don't use)";
     sc.Input[TFlistStart].SetInt(60);
     sc.Input[TFlistStart].SetIntLimits(0, 1000000000);
 
-    sc.Input[TFlistStart + 1].Name =
-        "---HTF: Second Intraday HTF (secs/vol/trades, 0=don't use)";
+    sc.Input[TFlistStart + 1].Name = "---HTF: Second Intraday HTF (secs/vol/trades, 0=don't use)";
     sc.Input[TFlistStart + 1].SetInt(300);
     sc.Input[TFlistStart + 1].SetIntLimits(0, 1000000000);
 
-    sc.Input[TFlistStart + 2].Name =
-        "---HTF: Third Intraday HTF (secs/vol/trades, 0=don't use)";
+    sc.Input[TFlistStart + 2].Name = "---HTF: Third Intraday HTF (secs/vol/trades, 0=don't use)";
     sc.Input[TFlistStart + 2].SetInt(900);
     sc.Input[TFlistStart + 2].SetIntLimits(0, 1000000000);
 
-    sc.Input[TFlistStart + 3].Name =
-        "---HTF: Fourth Intraday HTF (secs/vol/trades, 0=don't use)";
+    sc.Input[TFlistStart + 3].Name = "---HTF: Fourth Intraday HTF (secs/vol/trades, 0=don't use)";
     sc.Input[TFlistStart + 3].SetInt(1800);
     sc.Input[TFlistStart + 3].SetIntLimits(0, 1000000000);
 
-    sc.Input[TFlistStart + 4].Name =
-        "---HTF: Fifth Intraday HTF (secs/vol/trades, 0=don't use)";
+    sc.Input[TFlistStart + 4].Name = "---HTF: Fifth Intraday HTF (secs/vol/trades, 0=don't use)";
     sc.Input[TFlistStart + 4].SetInt(3600);
     sc.Input[TFlistStart + 4].SetIntLimits(0, 1000000000);
 
     sc.Input[TFlistStart + 5].Name =
         "---HTF: If intraday chart TF is above all used intradays, HTF is";
-    sc.Input[TFlistStart + 5].SetCustomInputStrings(
-        "Daily;Weekly;Monthly;Quarterly;Don't use");
+    sc.Input[TFlistStart + 5].SetCustomInputStrings("Daily;Weekly;Monthly;Quarterly;Don't use");
     sc.Input[TFlistStart + 5].SetCustomInputIndex(0);
 
     sc.Input[TFlistStart + 6].Name = "---HTF: For daily charts HTF is";
-    sc.Input[TFlistStart + 6].SetCustomInputStrings(
-        "Weekly;Monthly;Quarterly;Don't use");
+    sc.Input[TFlistStart + 6].SetCustomInputStrings("Weekly;Monthly;Quarterly;Don't use");
     sc.Input[TFlistStart + 6].SetCustomInputIndex(0);
 
     sc.Input[TFlistStart + 7].Name = "---HTF: For weekly charts HTF is";
-    sc.Input[TFlistStart + 7].SetCustomInputStrings(
-        "Monthly;Quarterly;Don't use");
+    sc.Input[TFlistStart + 7].SetCustomInputStrings("Monthly;Quarterly;Don't use");
     sc.Input[TFlistStart + 7].SetCustomInputIndex(0);
 
     sc.Input[TFlistStart + 8].Name = "---HTF: For monthly charts HTF is";
-    sc.Input[TFlistStart + 8].SetCustomInputStrings(
-        "Quarterly;Yearly;Don't use");
+    sc.Input[TFlistStart + 8].SetCustomInputStrings("Quarterly;Yearly;Don't use");
     sc.Input[TFlistStart + 8].SetCustomInputIndex(0);
 
     upFVGfills.Name = "Up FVG FillColor";
@@ -2315,17 +2368,16 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
   // where do GetPersistentInt() pointers to store IDs of filled and unfilled
   // FVGs start
   const int firstTested = 10;
-  int firstUntested = firstTested + showNfilled.GetInt() +
-                      10; // leave 10 spaces in the persistent variables between
-                          // filled and unfilled IDs just in case
+  int firstUntested =
+      firstTested + showNfilled.GetInt() + 10; // leave 10 spaces in the persistent variables
+                                               // between filled and unfilled IDs just in case
   // GetPersistentInt() pointer for the ID of the next/coming UP || DOWN
   // unfilled FVG
   int &upFVGsNextID = sc.GetPersistentInt(firstTested - 1);
   int &downFVGsNextID = sc.GetPersistentInt(-(firstTested - 1));
 
   // full recalculation
-  if (sc.Index == 0 ||
-      lastBar == -1) // This indicates a study is being recalculated.
+  if (sc.Index == 0 || lastBar == -1) // This indicates a study is being recalculated.
   {
     // When there is a full recalculation of the study,
     // reset the persistent variables we are using
@@ -2353,18 +2405,14 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
       sc.GetBarPeriodParameters(BarPeriod);
 
       // set reset time for HTF bars: start of new day || session
-      resetTime =
-          sc.UseSecondStartEndTimes == 0 ? sc.StartTime1 : sc.StartTime2;
+      resetTime = sc.UseSecondStartEndTimes == 0 ? sc.StartTime1 : sc.StartTime2;
 
       // if intraday
       if (BarPeriod.ChartDataType == INTRADAY_DATA) {
-        chartType =
-            10 +
-            static_cast<int>(
-                BarPeriod
-                    .IntradayChartBarPeriodType); // 10= chart is time based,
-                                                  // 11=volume based, 12=number
-                                                  // of trades based
+        chartType = 10 + static_cast<int>(
+                             BarPeriod.IntradayChartBarPeriodType); // 10= chart is time based,
+                                                                    // 11=volume based, 12=number
+                                                                    // of trades based
 
         // for intraday HTF calculations we only admit time, volume || number of
         // trades based charts
@@ -2399,8 +2447,7 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
       }
       // if chart is daily data
       else {
-        if (BarPeriod.HistoricalChartBarPeriodType ==
-            HISTORICAL_CHART_PERIOD_DAYS) {
+        if (BarPeriod.HistoricalChartBarPeriodType == HISTORICAL_CHART_PERIOD_DAYS) {
           if (sc.Input[TFlistStart + 6].GetIndex() == 0)
             HTF = -2; // weekly
           if (sc.Input[TFlistStart + 6].GetIndex() == 1)
@@ -2408,15 +2455,13 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
           if (sc.Input[TFlistStart + 6].GetIndex() == 2)
             HTF = -4; // quarterly
         }
-        if (BarPeriod.HistoricalChartBarPeriodType ==
-            HISTORICAL_CHART_PERIOD_WEEKLY) {
+        if (BarPeriod.HistoricalChartBarPeriodType == HISTORICAL_CHART_PERIOD_WEEKLY) {
           if (sc.Input[TFlistStart + 7].GetIndex() == 0)
             HTF = -3; // monthly
           if (sc.Input[TFlistStart + 7].GetIndex() == 1)
             HTF = -4; // quarterly
         }
-        if (BarPeriod.HistoricalChartBarPeriodType ==
-            HISTORICAL_CHART_PERIOD_MONTHLY) {
+        if (BarPeriod.HistoricalChartBarPeriodType == HISTORICAL_CHART_PERIOD_MONTHLY) {
           if (sc.Input[TFlistStart + 8].GetIndex() == 0)
             HTF = -4; // quarterly
           if (sc.Input[TFlistStart + 8].GetIndex() == 1)
@@ -2438,45 +2483,38 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
                               // trades || volume that comprises this bar
 
     // IF A NEW BAR TO CALCULATE FVGs FOR HAS JUST COMPLETED
-    if (TFtype.GetIndex() == 0 // we are using the chart timeframe
+    if (TFtype.GetIndex() == 0               // we are using the chart timeframe
+        || (HTF > 0 && HTFbarCounter >= HTF) // or the HTF bar has been completed
+        || (HTF > 0 && chartType == 10 &&
+            (sc.BaseDateTimeIn[sc.Index].GetTimeInSeconds() - resetTime) % HTF ==
+                0) // or a new time-based HTF bar has just completed (time-based
+                   // bars, specially seconds bars, sometimes are missing, and the
+                   // HTF counter doesn't work. This way, it will)
+        || (HTF == -1 && sc.BaseDateTimeIn[sc.Index].GetTimeInSeconds() - resetTime <
+                             sc.BaseDateTimeIn[sc.Index - 1].GetTimeInSeconds() -
+                                 resetTime) // or a new day has started
+        || (HTF == -2 &&
+            sc.BaseDateTimeIn[sc.Index].GetDayOfWeek() <
+                sc.BaseDateTimeIn[sc.Index - 1].GetDayOfWeek()) // or a new week has started
         ||
-        (HTF > 0 && HTFbarCounter >= HTF) // or the HTF bar has been completed
-        ||
-        (HTF > 0 && chartType == 10 &&
-         (sc.BaseDateTimeIn[sc.Index].GetTimeInSeconds() - resetTime) % HTF ==
-             0) // or a new time-based HTF bar has just completed (time-based
-                // bars, specially seconds bars, sometimes are missing, and the
-                // HTF counter doesn't work. This way, it will)
-        || (HTF == -1 &&
-            sc.BaseDateTimeIn[sc.Index].GetTimeInSeconds() - resetTime <
-                sc.BaseDateTimeIn[sc.Index - 1].GetTimeInSeconds() -
-                    resetTime) // or a new day has started
-        || (HTF == -2 && sc.BaseDateTimeIn[sc.Index].GetDayOfWeek() <
-                             sc.BaseDateTimeIn[sc.Index - 1]
-                                 .GetDayOfWeek()) // or a new week has started
-        || (HTF == -3 && sc.BaseDateTimeIn[sc.Index].GetMonth() !=
-                             sc.BaseDateTimeIn[sc.Index - 1]
-                                 .GetMonth()) // or a new month has started
+        (HTF == -3 && sc.BaseDateTimeIn[sc.Index].GetMonth() !=
+                          sc.BaseDateTimeIn[sc.Index - 1].GetMonth()) // or a new month has started
         || (HTF == -4 &&
-            sc.BaseDateTimeIn[sc.Index].GetMonth() !=
-                sc.BaseDateTimeIn[sc.Index - 1].GetMonth() &&
-            sc.BaseDateTimeIn[sc.Index - 1].GetMonth() % 3 ==
-                0) // or a new quarter has started
-        || (HTF == -5 && sc.BaseDateTimeIn[sc.Index].GetYear() !=
-                             sc.BaseDateTimeIn[sc.Index - 1]
-                                 .GetYear())) // or a new year has started
+            sc.BaseDateTimeIn[sc.Index].GetMonth() != sc.BaseDateTimeIn[sc.Index - 1].GetMonth() &&
+            sc.BaseDateTimeIn[sc.Index - 1].GetMonth() % 3 == 0) // or a new quarter has started
+        ||
+        (HTF == -5 && sc.BaseDateTimeIn[sc.Index].GetYear() !=
+                          sc.BaseDateTimeIn[sc.Index - 1].GetYear())) // or a new year has started
     {
       // IF TESTING NEAREST UNFILLED LEVELS ABOVE AND BELOW
       // if testing the nearest level above
-      if (bar1hi >= nearestUntestedLevelAbove &&
-          bar2hi < nearestUntestedLevelAbove &&
+      if (bar1hi >= nearestUntestedLevelAbove && bar2hi < nearestUntestedLevelAbove &&
           nearestUntestedLevelAbove != 0) {
         // loop through the unfilled DOWN-FVGs array
         for (int x = downFVGsNextID + 1; x <= -firstUntested; x++) {
           s_UseTool Rect;
           Rect.Clear();
-          bool getLine =
-              sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
+          bool getLine = sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
           if (getLine) {
             double begin = Rect.BeginValue;
             // if this FVG has just been filled
@@ -2496,23 +2534,19 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
               // if showing filled FVGs, delete filled FVGs older than
               // showNfilled
               if (showNfilled.GetInt() > 0) {
-                for (int i = -firstTested;
-                     i > -firstTested - showNfilled.GetInt(); i--) {
+                for (int i = -firstTested; i > -firstTested - showNfilled.GetInt(); i--) {
                   if (i == -firstTested)
-                    sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                             sc.GetPersistentInt(i));
+                    sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, sc.GetPersistentInt(i));
                   if (i > -firstTested - showNfilled.GetInt() + 1)
                     sc.GetPersistentInt(i) = sc.GetPersistentInt(i - 1);
                 }
 
                 // save the newly filled FVG ID to be able to delete it later
-                sc.GetPersistentInt(-firstTested - showNfilled.GetInt() + 1) =
-                    Rect.LineNumber;
+                sc.GetPersistentInt(-firstTested - showNfilled.GetInt() + 1) = Rect.LineNumber;
               }
               // if not, delete the newly filled gap
               else
-                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                         Rect.LineNumber);
+                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, Rect.LineNumber);
 
             }
             // show next untested showNunfilled FVGs
@@ -2524,8 +2558,7 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
                 sc.UseTool(Rect);
 
                 // search for next untested level
-                if (Rect.BeginValue < nearestUntestedLevelAbove ||
-                    nearestUntestedLevelAbove == 0)
+                if (Rect.BeginValue < nearestUntestedLevelAbove || nearestUntestedLevelAbove == 0)
                   nearestUntestedLevelAbove = Rect.BeginValue;
               }
             }
@@ -2534,15 +2567,13 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
       }
 
       // if testing the nearest level below
-      if (bar1lo <= nearestUntestedLevelBelow &&
-          bar2lo > nearestUntestedLevelBelow &&
+      if (bar1lo <= nearestUntestedLevelBelow && bar2lo > nearestUntestedLevelBelow &&
           nearestUntestedLevelBelow != 0) {
         // loop through the unfilled UP-FVGs array
         for (int x = upFVGsNextID - 1; x >= firstUntested; x--) {
           s_UseTool Rect;
           Rect.Clear();
-          bool getLine =
-              sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
+          bool getLine = sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
           if (getLine) {
             double begin = Rect.BeginValue;
             // if this FVG has just been filled
@@ -2562,23 +2593,19 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
               // if showing filled FVGs, delete filled FVGs older than
               // showNfilled
               if (showNfilled.GetInt() > 0) {
-                for (int i = firstTested;
-                     i < firstTested + showNfilled.GetInt(); i++) {
+                for (int i = firstTested; i < firstTested + showNfilled.GetInt(); i++) {
                   if (i == firstTested)
-                    sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                             sc.GetPersistentInt(i));
+                    sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, sc.GetPersistentInt(i));
                   if (i < firstTested + showNfilled.GetInt() - 1)
                     sc.GetPersistentInt(i) = sc.GetPersistentInt(i + 1);
                 }
 
                 // save the newly filled FVG ID to be able to delete it later
-                sc.GetPersistentInt(firstTested + showNfilled.GetInt() - 1) =
-                    Rect.LineNumber;
+                sc.GetPersistentInt(firstTested + showNfilled.GetInt() - 1) = Rect.LineNumber;
               }
               // if not, delete the newly filled gap
               else
-                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                         Rect.LineNumber);
+                sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, Rect.LineNumber);
             }
             // show next untested showNunfilled FVGs
             else {
@@ -2589,8 +2616,7 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
                 sc.UseTool(Rect);
 
                 // search for next untested level
-                if (Rect.BeginValue > nearestUntestedLevelBelow ||
-                    nearestUntestedLevelBelow == 0)
+                if (Rect.BeginValue > nearestUntestedLevelBelow || nearestUntestedLevelBelow == 0)
                   nearestUntestedLevelBelow = Rect.BeginValue;
               }
             }
@@ -2629,8 +2655,7 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
         if (upFVGsNextID >= firstUntested + showNunfilled.GetInt()) {
           Rect.Clear();
           bool getLine = sc.GetACSDrawingByLineNumber(
-              0, sc.GetPersistentInt(upFVGsNextID - showNunfilled.GetInt()),
-              Rect);
+              0, sc.GetPersistentInt(upFVGsNextID - showNunfilled.GetInt()), Rect);
           Rect.HideDrawing = 1;
           Rect.AddMethod = UTAM_ADD_OR_ADJUST;
           sc.UseTool(Rect);
@@ -2670,8 +2695,7 @@ SCSFExport scsf_FairValueGapsMultiTF(SCStudyInterfaceRef sc) {
         if (downFVGsNextID <= -firstUntested - showNunfilled.GetInt()) {
           Rect.Clear();
           bool getLine = sc.GetACSDrawingByLineNumber(
-              0, sc.GetPersistentInt(downFVGsNextID + showNunfilled.GetInt()),
-              Rect);
+              0, sc.GetPersistentInt(downFVGsNextID + showNunfilled.GetInt()), Rect);
           Rect.HideDrawing = 1;
           Rect.AddMethod = UTAM_ADD_OR_ADJUST;
           sc.UseTool(Rect);
@@ -2745,8 +2769,7 @@ SCSFExport scsf_AutoVbP(SCStudyInterfaceRef sc) {
     // set step to the nearest multiplier of sc.VolumeAtPriceMultiplier to avoid
     // VbP redraw problems
     int step = i_Step.GetInt();
-    i_Step.SetInt(max(step - step % sc.VolumeAtPriceMultiplier,
-                      sc.VolumeAtPriceMultiplier));
+    i_Step.SetInt(max(step - step % sc.VolumeAtPriceMultiplier, sc.VolumeAtPriceMultiplier));
   }
 
   // VbP Ticks Per Volume Bar is input 32, ID 31
@@ -2762,8 +2785,7 @@ SCSFExport scsf_AutoVbP(SCStudyInterfaceRef sc) {
         int prevValue;
         sc.GetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, prevValue);
         if (prevValue != sc.VolumeAtPriceMultiplier)
-          sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx,
-                                   sc.VolumeAtPriceMultiplier);
+          sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, sc.VolumeAtPriceMultiplier);
       }
     }
 
@@ -2823,8 +2845,7 @@ SCSFExport scsf_AutoVbP(SCStudyInterfaceRef sc) {
       sc.GetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, prevValue);
 
       if (targetTicksPerBar != prevValue) {
-        sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx,
-                                 targetTicksPerBar);
+        sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, targetTicksPerBar);
         redraw = true;
       }
     }
@@ -2850,8 +2871,7 @@ SCSFExport scsf_StopsOnChart(SCStudyInterfaceRef sc) {
     StopBuys.Name = "Stopfor Buys";
     StopBuys.DrawStyle = DRAWSTYLE_RIGHT_SIDE_TICK_SIZE_RECTANGLE;
     StopBuys.PrimaryColor = RGB(0, 255, 255);
-    StopBuys.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN |
-                         LL_NAME_REVERSE_COLORS;
+    StopBuys.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN | LL_NAME_REVERSE_COLORS;
     StopBuys.ShortName = "STOP";
     StopBuys.DrawZeros = 0;
     StopBuys.LineWidth = 2;
@@ -2859,8 +2879,8 @@ SCSFExport scsf_StopsOnChart(SCStudyInterfaceRef sc) {
     StopSells.Name = "Stopfor Buys";
     StopSells.DrawStyle = DRAWSTYLE_RIGHT_SIDE_TICK_SIZE_RECTANGLE;
     StopSells.PrimaryColor = RGB(0, 255, 255);
-    StopSells.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN |
-                          LL_NAME_REVERSE_COLORS;
+    StopSells.LineLabel =
+        LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN | LL_NAME_REVERSE_COLORS;
     StopSells.ShortName = "STOP";
     StopSells.DrawZeros = 0;
     StopSells.LineWidth = 2;
@@ -2942,8 +2962,7 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     hiGraph.Name = "Last High";
     hiGraph.DrawStyle = DRAWSTYLE_TRANSPARENT_TEXT;
     hiGraph.LineWidth = 10;
-    hiGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN |
-                        LL_NAME_REVERSE_COLORS;
+    hiGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN | LL_NAME_REVERSE_COLORS;
     hiGraph.PrimaryColor = RGB(255, 255, 0);
     hiGraph.DrawZeros = 0;
     hiGraph.ShortName = "HI";
@@ -2951,26 +2970,23 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     loGraph.Name = "Last Low";
     loGraph.DrawStyle = DRAWSTYLE_TRANSPARENT_TEXT;
     loGraph.LineWidth = 10;
-    loGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN |
-                        LL_NAME_REVERSE_COLORS;
+    loGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN | LL_NAME_REVERSE_COLORS;
     loGraph.PrimaryColor = RGB(255, 255, 0);
     loGraph.DrawZeros = 0;
     loGraph.ShortName = "LO";
 
     cumSizeGraph.Name = "Cumulative Size";
     cumSizeGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    cumSizeGraph.LineLabel =
-        LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
-        LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
+    cumSizeGraph.LineLabel = LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
+                             LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
     cumSizeGraph.PrimaryColor = RGB(255, 255, 255);
     cumSizeGraph.SecondaryColor = RGB(255, 255, 255);
     cumSizeGraph.SecondaryColorUsed = 1;
 
     cumDeltaGraph.Name = "Delta per Price";
     cumDeltaGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    cumDeltaGraph.LineLabel =
-        LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
-        LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
+    cumDeltaGraph.LineLabel = LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
+                              LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
     cumDeltaGraph.PrimaryColor = RGB(100, 255, 100);
     cumDeltaGraph.SecondaryColor = RGB(255, 100, 100);
     cumDeltaGraph.SecondaryColorUsed = 1;
@@ -2980,8 +2996,7 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     cumPSgraph.Name = "Pulling & Stacking per Price";
     cumPSgraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
     cumPSgraph.LineLabel = LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
-                           LL_DISPLAY_CUSTOM_VALUE_AT_Y |
-                           LL_VALUE_REVERSE_COLORS_INV;
+                           LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
     cumPSgraph.PrimaryColor = RGB(100, 255, 100);
     cumPSgraph.SecondaryColor = RGB(255, 100, 100);
     cumPSgraph.SecondaryColorUsed = 1;
@@ -2990,23 +3005,20 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
 
     askSizeGraph.Name = "Recent Ask Size/Up color";
     askSizeGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    askSizeGraph.LineLabel =
-        LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
-        LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
+    askSizeGraph.LineLabel = LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
+                             LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
     askSizeGraph.PrimaryColor = RGB(100, 255, 100);
 
     bidSizeGraph.Name = "Recent Bid Size/Down color";
     bidSizeGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    bidSizeGraph.LineLabel =
-        LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
-        LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
+    bidSizeGraph.LineLabel = LL_DISPLAY_VALUE | LL_VALUE_ALIGN_DOM_LABELS_COLUMN |
+                             LL_DISPLAY_CUSTOM_VALUE_AT_Y | LL_VALUE_REVERSE_COLORS_INV;
     bidSizeGraph.PrimaryColor = RGB(255, 100, 100);
 
     swingDataGraph.Name = "Current Swing's Data";
     swingDataGraph.DrawStyle = DRAWSTYLE_TEXT;
-    swingDataGraph.LineLabel = LL_DISPLAY_NAME |
-                               LL_NAME_ALIGN_DOM_LABELS_COLUMN |
-                               LL_NAME_REVERSE_COLORS;
+    swingDataGraph.LineLabel =
+        LL_DISPLAY_NAME | LL_NAME_ALIGN_DOM_LABELS_COLUMN | LL_NAME_REVERSE_COLORS;
     swingDataGraph.LineWidth = 10;
     swingDataGraph.PrimaryColor = RGB(255, 255, 255);
 
@@ -3038,14 +3050,12 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     clear.SetYesNo(1);
 
     showSizes.Name = "Show Last Sizes";
-    showSizes.SetCustomInputStrings(
-        "No;Cumulative Last Size;Cum.Size + DeltaPerPrice;Only "
-        "DeltaPerPrice;Bid/Ask sizes");
+    showSizes.SetCustomInputStrings("No;Cumulative Last Size;Cum.Size + DeltaPerPrice;Only "
+                                    "DeltaPerPrice;Bid/Ask sizes");
     showSizes.SetCustomInputIndex(2);
 
     cumSizeColoring.Name = "Cumulative Size Coloring";
-    cumSizeColoring.SetCustomInputStrings(
-        "Subgraph color;Uptick/Downtick;Delta per Price");
+    cumSizeColoring.SetCustomInputStrings("Subgraph color;Uptick/Downtick;Delta per Price");
     cumSizeColoring.SetCustomInputIndex(2);
 
     showPSinLabel.Name = "Show Pulling&Stacking per price in Label Column";
@@ -3064,13 +3074,11 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     opaqueBackground.SetCustomInputIndex(0);
 
     noDataDisplay.Name = "Display Highs & Lows with no data as";
-    noDataDisplay.SetCustomInputStrings(
-        "Set in Subgraphs tab;Up/Down Triangles of fontSize");
+    noDataDisplay.SetCustomInputStrings("Set in Subgraphs tab;Up/Down Triangles of fontSize");
     noDataDisplay.SetCustomInputIndex(1);
 
     dataToDisplay.Name = "Swing data to display";
-    dataToDisplay.SetCustomInputStrings(
-        "Volume;V + Delta;V + D + Pulling&Stacking");
+    dataToDisplay.SetCustomInputStrings("Volume;V + Delta;V + D + Pulling&Stacking");
     dataToDisplay.SetCustomInputIndex(2);
 
     deltaType.Name = "Delta Format";
@@ -3083,15 +3091,13 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     nHiLos.Name = "Number of previous Hi&Los to display";
     nHiLos.SetInt(5);
 
-    interpColorsOldHiLos.Name =
-        "Interpolate Primary/Secondary colors for Old Hi&Los";
+    interpColorsOldHiLos.Name = "Interpolate Primary/Secondary colors for Old Hi&Los";
     interpColorsOldHiLos.SetYesNo(1);
 
     showMaxMin.Name = "Show current swing's max/min Delta and P&S values";
     showMaxMin.SetYesNo(1);
 
-    colorSwingData.Name =
-        "Color Swing Data acc. to swing delta (w Bid/Ask colors)";
+    colorSwingData.Name = "Color Swing Data acc. to swing delta (w Bid/Ask colors)";
     colorSwingData.SetYesNo(1);
 
     fontSizeSwingData.Name = "Font size for swing data";
@@ -3167,31 +3173,26 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
     }
 
     if (whereDisplayData.GetIndex() >= 2) {
-      hiGraph.DrawStyle = opaqueBackground.GetIndex() >= 2
-                              ? DRAWSTYLE_TEXT
-                              : DRAWSTYLE_TRANSPARENT_TEXT;
+      hiGraph.DrawStyle =
+          opaqueBackground.GetIndex() >= 2 ? DRAWSTYLE_TEXT : DRAWSTYLE_TRANSPARENT_TEXT;
       hiGraph.LineWidth = fontSizeLastHiLo.GetInt();
-      loGraph.DrawStyle = opaqueBackground.GetIndex() >= 2
-                              ? DRAWSTYLE_TEXT
-                              : DRAWSTYLE_TRANSPARENT_TEXT;
+      loGraph.DrawStyle =
+          opaqueBackground.GetIndex() >= 2 ? DRAWSTYLE_TEXT : DRAWSTYLE_TRANSPARENT_TEXT;
       loGraph.LineWidth = fontSizeLastHiLo.GetInt();
       if (whereDisplayData.GetIndex() == 3) {
-        prevHisGraphs.DrawStyle = opaqueBackground.GetIndex() == 3
-                                      ? DRAWSTYLE_TEXT
-                                      : DRAWSTYLE_TRANSPARENT_TEXT;
+        prevHisGraphs.DrawStyle =
+            opaqueBackground.GetIndex() == 3 ? DRAWSTYLE_TEXT : DRAWSTYLE_TRANSPARENT_TEXT;
         prevHisGraphs.LineWidth = fontSizeOldHiLos.GetInt();
-        prevLosGraphs.DrawStyle = opaqueBackground.GetIndex() == 3
-                                      ? DRAWSTYLE_TEXT
-                                      : DRAWSTYLE_TRANSPARENT_TEXT;
+        prevLosGraphs.DrawStyle =
+            opaqueBackground.GetIndex() == 3 ? DRAWSTYLE_TEXT : DRAWSTYLE_TRANSPARENT_TEXT;
         prevLosGraphs.LineWidth = fontSizeOldHiLos.GetInt();
       }
     }
 
     // set current swing data subgraph
     if (whereDisplayData.GetIndex() > 0) {
-      swingDataGraph.DrawStyle = opaqueBackground.GetIndex() >= 1
-                                     ? DRAWSTYLE_TEXT
-                                     : DRAWSTYLE_TRANSPARENT_TEXT;
+      swingDataGraph.DrawStyle =
+          opaqueBackground.GetIndex() >= 1 ? DRAWSTYLE_TEXT : DRAWSTYLE_TRANSPARENT_TEXT;
       swingDataGraph.LineWidth = fontSizeSwingData.GetInt();
     }
 
@@ -3206,13 +3207,11 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
         sc.Subgraph[40 - 2 * x].LineLabel = prevHisGraphs.LineLabel;
         sc.Subgraph[40 - 2 * x].PrimaryColor =
             interpColorsOldHiLos.GetYesNo()
-                ? sc.RGBInterpolate(prevHisGraphs.PrimaryColor,
-                                    prevHisGraphs.SecondaryColor,
+                ? sc.RGBInterpolate(prevHisGraphs.PrimaryColor, prevHisGraphs.SecondaryColor,
                                     (float)(x - 1) / (nHiLos.GetInt() - 2))
                 : prevHisGraphs.PrimaryColor;
         sc.Subgraph[40 - 2 * x].DrawZeros = 0;
-        sc.Subgraph[40 - 2 * x].ShortName.Format(
-            prevHisGraphs.ShortName + " %i", x);
+        sc.Subgraph[40 - 2 * x].ShortName.Format(prevHisGraphs.ShortName + " %i", x);
 
         // new subgraphs for previous lows
         sc.Subgraph[41 - 2 * x].Name.Format("Low %i", x);
@@ -3221,13 +3220,11 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
         sc.Subgraph[41 - 2 * x].LineLabel = prevLosGraphs.LineLabel;
         sc.Subgraph[41 - 2 * x].PrimaryColor =
             interpColorsOldHiLos.GetYesNo()
-                ? sc.RGBInterpolate(prevLosGraphs.PrimaryColor,
-                                    prevLosGraphs.SecondaryColor,
+                ? sc.RGBInterpolate(prevLosGraphs.PrimaryColor, prevLosGraphs.SecondaryColor,
                                     (float)(x - 1) / (nHiLos.GetInt() - 2))
                 : prevLosGraphs.PrimaryColor;
         sc.Subgraph[41 - 2 * x].DrawZeros = 0;
-        sc.Subgraph[41 - 2 * x].ShortName.Format(
-            prevLosGraphs.ShortName + " %i", x);
+        sc.Subgraph[41 - 2 * x].ShortName.Format(prevLosGraphs.ShortName + " %i", x);
       } else {
         // do not show possible hi&los subgraphs if we are now showing a lesser
         // number of them
@@ -3308,8 +3305,7 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
 
       // calculate max&min delta for this swing and for potential new swing
       if (showMaxMin.GetYesNo())
-        if (TimeSales[TSIndex].Type == SC_TS_ASK ||
-            TimeSales[TSIndex].Type == SC_TS_BID) {
+        if (TimeSales[TSIndex].Type == SC_TS_ASK || TimeSales[TSIndex].Type == SC_TS_BID) {
           if (swingDelta > swingMaxDelta || swingMaxDelta == 0)
             swingMaxDelta = swingDelta;
           if (swingDelta < swingMinDelta || swingMinDelta == 0)
@@ -3361,19 +3357,17 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
       // HAS A NEW HIGH || LOW BEEN CONFIRMED?
       if (updateTradedPrice != prevPrice && updateTradedPrice != 0) {
         // if there is a new confirmed high
-        if (updateTradedPrice <= (newHi - nTicks.GetInt() * sc.TickSize) &&
-            newLo == 0 && newHi != 0) {
+        if (updateTradedPrice <= (newHi - nTicks.GetInt() * sc.TickSize) && newLo == 0 &&
+            newHi != 0) {
           // new confirmed Hi
           // move highs to previous highs subgraphs and change their number
           // display
           for (int x = nHiLos.GetInt() - 1; x > 0; x--) {
             sc.Subgraph[40 - 2 * x][i] = sc.Subgraph[40 - 2 * (x - 1)][i];
-            SCString prevHiLoData =
-                sc.Subgraph[40 - 2 * (x - 1)].TextDrawStyleText;
+            SCString prevHiLoData = sc.Subgraph[40 - 2 * (x - 1)].TextDrawStyleText;
             sc.Subgraph[40 - 2 * x].TextDrawStyleText.Format(
                 "high %i%s", x,
-                prevHiLoData.GetSubString(100, prevHiLoData.IndexOf('\n', 0))
-                    .GetChars());
+                prevHiLoData.GetSubString(100, prevHiLoData.IndexOf('\n', 0)).GetChars());
           }
 
           // set subgraph
@@ -3385,9 +3379,8 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
             if (deltaType.GetIndex() == 0)
               swingData.AppendFormat("\nD: %i", swingDelta - newDelta);
             else
-              swingData.AppendFormat("\nD: %i%%",
-                                     (int)(100 * (swingDelta - newDelta) /
-                                           ((float)(swingVol - newVol))));
+              swingData.AppendFormat(
+                  "\nD: %i%%", (int)(100 * (swingDelta - newDelta) / ((float)(swingVol - newVol))));
             if (dataToDisplay.GetIndex() == 2)
               swingData.AppendFormat("\nPS: %i", swingPS - newPS);
           }
@@ -3424,17 +3417,15 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
             sc.ClearCurrentTradedBidAskVolume();
         } else
           // if there is a new confirmed low
-          if (updateTradedPrice >= (newLo + nTicks.GetInt() * sc.TickSize) &&
-              newHi == 0 && newLo != 0) {
+          if (updateTradedPrice >= (newLo + nTicks.GetInt() * sc.TickSize) && newHi == 0 &&
+              newLo != 0) {
             // new confirmed Lo
             for (int x = nHiLos.GetInt() - 1; x > 0; x--) {
               sc.Subgraph[41 - 2 * x][i] = sc.Subgraph[41 - 2 * (x - 1)][i];
-              SCString prevHiLoData =
-                  sc.Subgraph[41 - 2 * (x - 1)].TextDrawStyleText;
+              SCString prevHiLoData = sc.Subgraph[41 - 2 * (x - 1)].TextDrawStyleText;
               sc.Subgraph[41 - 2 * x].TextDrawStyleText.Format(
                   "low %i%s", x,
-                  prevHiLoData.GetSubString(100, prevHiLoData.IndexOf('\n', 0))
-                      .GetChars());
+                  prevHiLoData.GetSubString(100, prevHiLoData.IndexOf('\n', 0)).GetChars());
             }
             // set subgraph
             loGraph[i] = newLo;
@@ -3445,9 +3436,8 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
               if (deltaType.GetIndex() == 0)
                 swingData.AppendFormat("\nD: %i", swingDelta - newDelta);
               else
-                swingData.AppendFormat("\nD: %i%%",
-                                       (int)(100 * (swingDelta - newDelta) /
-                                             ((float)(swingVol - newVol))));
+                swingData.AppendFormat("\nD: %i%%", (int)(100 * (swingDelta - newDelta) /
+                                                          ((float)(swingVol - newVol))));
               if (dataToDisplay.GetIndex() == 2)
                 swingData.AppendFormat("\nPS: %i", swingPS - newPS);
             }
@@ -3543,17 +3533,15 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
             // updateTradedAsk > lastTradedAsk) ? askSizeGraph.PrimaryColor :
             // (updateTradedBid < lastTradedBid && updateTradedAsk <
             // lastTradedAsk) ? bidSizeGraph.PrimaryColor : origColorCumSize;
-            cumSizeGraph.PrimaryColor = (sc.Bid > lastBid && sc.Ask > lastAsk)
-                                            ? askSizeGraph.PrimaryColor
-                                        : (sc.Bid < lastBid && sc.Ask < lastAsk)
-                                            ? bidSizeGraph.PrimaryColor
-                                            : origColorCumSize;
+            cumSizeGraph.PrimaryColor =
+                (sc.Bid > lastBid && sc.Ask > lastAsk)   ? askSizeGraph.PrimaryColor
+                : (sc.Bid < lastBid && sc.Ask < lastAsk) ? bidSizeGraph.PrimaryColor
+                                                         : origColorCumSize;
             // lastTradedBid = updateTradedBid;
             // lastTradedAsk = updateTradedAsk;
           } else if (cumSizeColoring.GetIndex() == 2)
-            cumSizeGraph.PrimaryColor = cmA - cmB > 0
-                                            ? cumDeltaGraph.PrimaryColor
-                                            : cumDeltaGraph.SecondaryColor;
+            cumSizeGraph.PrimaryColor =
+                cmA - cmB > 0 ? cumDeltaGraph.PrimaryColor : cumDeltaGraph.SecondaryColor;
         }
 
         // if showing delta per price
@@ -3566,8 +3554,7 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
              /= (cmA + cmB); cumDeltaGraph.Data[i] *= 100;
                                                   } */
           thisLabelPrice = updateTradedPrice - lineSpacing;
-          cumDeltaGraph.Arrays[0][i] =
-              thisLabelPrice; // updateTradedPrice - nRows*lineSpacing;
+          cumDeltaGraph.Arrays[0][i] = thisLabelPrice; // updateTradedPrice - nRows*lineSpacing;
           nRows++;
         }
       }
@@ -3609,8 +3596,7 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
         if (sc.Ask != lastAsk)
           askSizeGraph.Data[i] = 0;
         askSizeGraph.Data[i] += askV;
-        askSizeGraph.Arrays[0][i] =
-            spacing.GetInt() > 1 ? thisLabelPrice + lineSpacing : sc.Ask;
+        askSizeGraph.Arrays[0][i] = spacing.GetInt() > 1 ? thisLabelPrice + lineSpacing : sc.Ask;
       }
 
       /* //SHOW ALSO PULLING & STACKING PER PRICE ON LABEL COLUMN
@@ -3663,33 +3649,27 @@ SCSFExport scsf_BetterDOM(SCStudyInterfaceRef sc) {
         if (deltaType.GetIndex() == 0) {
           swingData.AppendFormat("\nDELTA: %i", swingDelta);
           if (showMaxMin.GetYesNo())
-            swingData.AppendFormat("\ndmax: %i\ndmin: %i", swingMaxDelta,
-                                   swingMinDelta);
+            swingData.AppendFormat("\ndmax: %i\ndmin: %i", swingMaxDelta, swingMinDelta);
         } else {
-          swingData.AppendFormat("\nDELTA: %i%%",
-                                 (int)(100 * swingDelta / ((float)swingVol)));
+          swingData.AppendFormat("\nDELTA: %i%%", (int)(100 * swingDelta / ((float)swingVol)));
           if (showMaxMin.GetYesNo())
-            swingData.AppendFormat(
-                "\ndmax: %i%%\ndmin: %i%%",
-                (int)(100 * swingMaxDelta / ((float)swingVol)),
-                (int)(100 * swingMinDelta / ((float)swingVol)));
+            swingData.AppendFormat("\ndmax: %i%%\ndmin: %i%%",
+                                   (int)(100 * swingMaxDelta / ((float)swingVol)),
+                                   (int)(100 * swingMinDelta / ((float)swingVol)));
         }
         if (dataToDisplay.GetIndex() == 2) {
           swingData.Append("\n------------");
           swingData.AppendFormat("\nPL&ST: %i", swingPS);
           if (showMaxMin.GetYesNo())
-            swingData.AppendFormat("\npsmax: %i\npsmin: %i", swingMaxPS,
-                                   swingMinPS);
+            swingData.AppendFormat("\npsmax: %i\npsmin: %i", swingMaxPS, swingMinPS);
         }
       }
     }
     swingDataGraph.TextDrawStyleText = swingData;
-    swingDataGraph[i] = newLo == 0 && newHi == 0 ? sc.Ask
-                        : newLo != 0             ? newLo
-                                                 : newHi;
+    swingDataGraph[i] = newLo == 0 && newHi == 0 ? sc.Ask : newLo != 0 ? newLo : newHi;
     if (colorSwingData.GetYesNo())
-      swingDataGraph.PrimaryColor = swingDelta > 0 ? askSizeGraph.PrimaryColor
-                                                   : bidSizeGraph.PrimaryColor;
+      swingDataGraph.PrimaryColor =
+          swingDelta > 0 ? askSizeGraph.PrimaryColor : bidSizeGraph.PrimaryColor;
 
     // SAVE VALUES FOR NEXT UPDATE
     LastProcessedSequence = TimeSales[TimeSales.Size() - 1].Sequence;
@@ -3767,8 +3747,7 @@ SCSFExport scsf_ColorDeltaBars(SCStudyInterfaceRef sc) {
     colorBid_1.SetColor(170, 0, 0);
 
     barColorMode.Name = "Bar Color Mode";
-    barColorMode.SetCustomInputStrings(
-        "Use thresholds; Use gradient: Base-Threshold 3");
+    barColorMode.SetCustomInputStrings("Use thresholds; Use gradient: Base-Threshold 3");
     barColorMode.SetCustomInputIndex(1);
 
     useBaseColor.Name = "Color candles below threshold 1";
@@ -3789,15 +3768,13 @@ SCSFExport scsf_ColorDeltaBars(SCStudyInterfaceRef sc) {
   ColorDeltaBar.Name = "Color";
   ColorDeltaBar.DrawStyle = DRAWSTYLE_COLOR_BAR;
 
-  float deltaPerc =
-      100 * ((float)sc.AskVolume[sc.Index] - (float)sc.BidVolume[sc.Index]) /
-      (float)sc.Volume[sc.Index];
+  float deltaPerc = 100 * ((float)sc.AskVolume[sc.Index] - (float)sc.BidVolume[sc.Index]) /
+                    (float)sc.Volume[sc.Index];
 
   // if using threshold colors
   if (barColorMode.GetIndex() == 0) {
     // at the beginning color bar with base color || don't color
-    ColorDeltaBar.DataColor[sc.Index] =
-        useBaseColor.GetYesNo() ? baseColor.GetColor() : 0;
+    ColorDeltaBar.DataColor[sc.Index] = useBaseColor.GetYesNo() ? baseColor.GetColor() : 0;
 
     // sepecify color depending on delta threshold
     if (deltaPerc > level_3.GetInt())
@@ -3817,28 +3794,25 @@ SCSFExport scsf_ColorDeltaBars(SCStudyInterfaceRef sc) {
     ColorDeltaBar[sc.Index] = ColorDeltaBar.DataColor[sc.Index] != 0 ? 1 : 0;
   } else // using gradient
   {
-    ColorDeltaBar[sc.Index] = 1; // always color candles
-    float interpPerc =
-        deltaPerc / level_3.GetInt(); // deltaPercent threshold 3 ratio
-    if (deltaPerc > 0)                // set the candle color
-      ColorDeltaBar.DataColor[sc.Index] = sc.RGBInterpolate(
-          baseColor.GetColor(), colorAsk_3.GetColor(), min(interpPerc, 1));
+    ColorDeltaBar[sc.Index] = 1;                     // always color candles
+    float interpPerc = deltaPerc / level_3.GetInt(); // deltaPercent threshold 3 ratio
+    if (deltaPerc > 0)                               // set the candle color
+      ColorDeltaBar.DataColor[sc.Index] =
+          sc.RGBInterpolate(baseColor.GetColor(), colorAsk_3.GetColor(), min(interpPerc, 1));
     else
-      ColorDeltaBar.DataColor[sc.Index] = sc.RGBInterpolate(
-          baseColor.GetColor(), colorBid_3.GetColor(), -max(interpPerc, -1));
+      ColorDeltaBar.DataColor[sc.Index] =
+          sc.RGBInterpolate(baseColor.GetColor(), colorBid_3.GetColor(), -max(interpPerc, -1));
   }
 
   // si la barra ha cerrado, calulo POC de cada lado
   if (sc.GetBarHasClosedStatus(sc.Index) == BHCS_BAR_HAS_CLOSED) {
     if (deltaPerc > level_2.GetInt()) {
       const s_VolumeAtPriceV2 *p_VolumeAtPrice = NULL;
-      int VAPSizeAtBarIndex =
-          sc.VolumeAtPriceForBars->GetSizeAtBarIndex(sc.Index);
+      int VAPSizeAtBarIndex = sc.VolumeAtPriceForBars->GetSizeAtBarIndex(sc.Index);
       unsigned int maxAskVol = 0;
       float maxAskPrice = 0;
       for (int VAPIndex = 0; VAPIndex < VAPSizeAtBarIndex; VAPIndex++) {
-        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(sc.Index, VAPIndex,
-                                                           &p_VolumeAtPrice))
+        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(sc.Index, VAPIndex, &p_VolumeAtPrice))
           break;
 
         if (p_VolumeAtPrice->AskVolume > maxAskVol) {
@@ -3850,20 +3824,17 @@ SCSFExport scsf_ColorDeltaBars(SCStudyInterfaceRef sc) {
       if (displayPOCs.GetYesNo())
         AskPOC[sc.Index] = maxAskPrice;
       if (extendPOCs.GetYesNo())
-        sc.AddLineUntilFutureIntersection(sc.Index, 0, maxAskPrice,
-                                          AskPOC.PrimaryColor, 1, LINESTYLE_DOT,
-                                          0, 0, "");
+        sc.AddLineUntilFutureIntersection(sc.Index, 0, maxAskPrice, AskPOC.PrimaryColor, 1,
+                                          LINESTYLE_DOT, 0, 0, "");
     }
 
     if (deltaPerc < -level_2.GetInt()) {
       const s_VolumeAtPriceV2 *p_VolumeAtPrice = NULL;
-      int VAPSizeAtBarIndex =
-          sc.VolumeAtPriceForBars->GetSizeAtBarIndex(sc.Index);
+      int VAPSizeAtBarIndex = sc.VolumeAtPriceForBars->GetSizeAtBarIndex(sc.Index);
       unsigned int maxBidVol = 0;
       float maxBidPrice = 0;
       for (int VAPIndex = 0; VAPIndex < VAPSizeAtBarIndex; VAPIndex++) {
-        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(sc.Index, VAPIndex,
-                                                           &p_VolumeAtPrice))
+        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(sc.Index, VAPIndex, &p_VolumeAtPrice))
           break;
 
         if (p_VolumeAtPrice->BidVolume > maxBidVol) {
@@ -3875,9 +3846,8 @@ SCSFExport scsf_ColorDeltaBars(SCStudyInterfaceRef sc) {
       if (displayPOCs.GetYesNo())
         BidPOC[sc.Index] = maxBidPrice;
       if (extendPOCs.GetYesNo())
-        sc.AddLineUntilFutureIntersection(sc.Index, 0, maxBidPrice,
-                                          BidPOC.PrimaryColor, 1, LINESTYLE_DOT,
-                                          0, 0, "");
+        sc.AddLineUntilFutureIntersection(sc.Index, 0, maxBidPrice, BidPOC.PrimaryColor, 1,
+                                          LINESTYLE_DOT, 0, 0, "");
     }
   }
 }
@@ -3967,14 +3937,12 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
     // IF TESTING NEAREST UNFILLED LEVELS ABOVE AND BELOW
     // if testing the nearest level below
     if (sc.High[sc.Index - 1] >= nearestUntestedLevelAbove &&
-        sc.High[sc.Index - 2] < nearestUntestedLevelAbove &&
-        nearestUntestedLevelAbove != 0) {
+        sc.High[sc.Index - 2] < nearestUntestedLevelAbove && nearestUntestedLevelAbove != 0) {
       // loop through the unfilled DOWN-FVGs array
       for (int x = downFVGsNextID + 1; x <= -firstUntested; x++) {
         s_UseTool Rect;
         Rect.Clear();
-        bool getLine =
-            sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
+        bool getLine = sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
         if (getLine) {
           double begin = Rect.BeginValue;
           // if this FVG has just been filled
@@ -3993,23 +3961,19 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
 
             // if showing filled FVGs, delete filled FVGs older than showNfilled
             if (showNfilled.GetInt() > 0) {
-              for (int i = -firstTested;
-                   i > -firstTested - showNfilled.GetInt(); i--) {
+              for (int i = -firstTested; i > -firstTested - showNfilled.GetInt(); i--) {
                 if (i == -firstTested)
-                  sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                           sc.GetPersistentInt(i));
+                  sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, sc.GetPersistentInt(i));
                 if (i > -firstTested - showNfilled.GetInt() + 1)
                   sc.GetPersistentInt(i) = sc.GetPersistentInt(i - 1);
               }
 
               // save the newly filled FVG ID to be able to delete it later
-              sc.GetPersistentInt(-firstTested - showNfilled.GetInt() + 1) =
-                  Rect.LineNumber;
+              sc.GetPersistentInt(-firstTested - showNfilled.GetInt() + 1) = Rect.LineNumber;
             }
             // if not, delete the newly filled gap
             else
-              sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                       Rect.LineNumber);
+              sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, Rect.LineNumber);
 
           }
           // show next untested showNunfilled FVGs
@@ -4021,8 +3985,7 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
               sc.UseTool(Rect);
 
               // search for next untested level
-              if (Rect.BeginValue < nearestUntestedLevelAbove ||
-                  nearestUntestedLevelAbove == 0)
+              if (Rect.BeginValue < nearestUntestedLevelAbove || nearestUntestedLevelAbove == 0)
                 nearestUntestedLevelAbove = Rect.BeginValue;
             }
           }
@@ -4032,14 +3995,12 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
 
     // if testing the nearest level below
     if (sc.Low[sc.Index - 1] <= nearestUntestedLevelBelow &&
-        sc.Low[sc.Index - 2] > nearestUntestedLevelBelow &&
-        nearestUntestedLevelBelow != 0) {
+        sc.Low[sc.Index - 2] > nearestUntestedLevelBelow && nearestUntestedLevelBelow != 0) {
       // loop through the unfilled UP-FVGs array
       for (int x = upFVGsNextID - 1; x >= firstUntested; x--) {
         s_UseTool Rect;
         Rect.Clear();
-        bool getLine =
-            sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
+        bool getLine = sc.GetACSDrawingByLineNumber(0, sc.GetPersistentInt(x), Rect);
         if (getLine) {
           double begin = Rect.BeginValue;
           // if this FVG has just been filled
@@ -4058,23 +4019,19 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
 
             // if showing filled FVGs, delete filled FVGs older than showNfilled
             if (showNfilled.GetInt() > 0) {
-              for (int i = firstTested; i < firstTested + showNfilled.GetInt();
-                   i++) {
+              for (int i = firstTested; i < firstTested + showNfilled.GetInt(); i++) {
                 if (i == firstTested)
-                  sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                           sc.GetPersistentInt(i));
+                  sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, sc.GetPersistentInt(i));
                 if (i < firstTested + showNfilled.GetInt() - 1)
                   sc.GetPersistentInt(i) = sc.GetPersistentInt(i + 1);
               }
 
               // save the newly filled FVG ID to be able to delete it later
-              sc.GetPersistentInt(firstTested + showNfilled.GetInt() - 1) =
-                  Rect.LineNumber;
+              sc.GetPersistentInt(firstTested + showNfilled.GetInt() - 1) = Rect.LineNumber;
             }
             // if not, delete the newly filled gap
             else
-              sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING,
-                                       Rect.LineNumber);
+              sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, Rect.LineNumber);
           }
           // show next untested showNunfilled FVGs
           else {
@@ -4085,8 +4042,7 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
               sc.UseTool(Rect);
 
               // search for next untested level
-              if (Rect.BeginValue > nearestUntestedLevelBelow ||
-                  nearestUntestedLevelBelow == 0)
+              if (Rect.BeginValue > nearestUntestedLevelBelow || nearestUntestedLevelBelow == 0)
                 nearestUntestedLevelBelow = Rect.BeginValue;
             }
           }
@@ -4127,8 +4083,7 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
       if (upFVGsNextID >= firstUntested + showNunfilled.GetInt()) {
         Rect.Clear();
         bool getLine = sc.GetACSDrawingByLineNumber(
-            0, sc.GetPersistentInt(upFVGsNextID - showNunfilled.GetInt()),
-            Rect);
+            0, sc.GetPersistentInt(upFVGsNextID - showNunfilled.GetInt()), Rect);
         Rect.HideDrawing = 1;
         Rect.AddMethod = UTAM_ADD_OR_ADJUST;
         sc.UseTool(Rect);
@@ -4170,8 +4125,7 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc) {
       if (downFVGsNextID <= -firstUntested - showNunfilled.GetInt()) {
         Rect.Clear();
         bool getLine = sc.GetACSDrawingByLineNumber(
-            0, sc.GetPersistentInt(downFVGsNextID + showNunfilled.GetInt()),
-            Rect);
+            0, sc.GetPersistentInt(downFVGsNextID + showNunfilled.GetInt()), Rect);
         Rect.HideDrawing = 1;
         Rect.AddMethod = UTAM_ADD_OR_ADJUST;
         sc.UseTool(Rect);
@@ -4211,8 +4165,7 @@ SCSFExport scsf_GapBars(SCStudyInterfaceRef sc) {
   }
 
   //*** SI LA BARRA HA CERRADO, BUSCO SI HA HABIDO GAPS
-  if (!sc.HideStudy &&
-      sc.GetBarHasClosedStatus(sc.Index) == BHCS_BAR_HAS_CLOSED) {
+  if (!sc.HideStudy && sc.GetBarHasClosedStatus(sc.Index) == BHCS_BAR_HAS_CLOSED) {
     // VEO SI HAY GAPUP
     if (sc.Low[sc.Index] > sc.High[sc.Index - 2]) {
       // coloreo la barra/candle
@@ -4344,16 +4297,13 @@ SCSFExport scsf_InitialBalanceSession(SCStudyInterfaceRef sc) {
 
     // Inputs
     Input_IBType.Name = "Initial Balance For Session";
-    Input_IBType.SetCustomInputStrings(
-        "Day Session (RTH);Evening Session (ETH);Custom Session");
+    Input_IBType.SetCustomInputStrings("Day Session (RTH);Evening Session (ETH);Custom Session");
     Input_IBType.SetCustomInputIndex(0);
 
-    Input_PeriodEndAsMinutesFromSessionStart.Name =
-        "Period End As Minutes from Session Start";
+    Input_PeriodEndAsMinutesFromSessionStart.Name = "Period End As Minutes from Session Start";
     Input_PeriodEndAsMinutesFromSessionStart.SetInt(30);
 
-    Input_PeriodEndAsSecondsFromSessionStart.Name =
-        "And/or Seconds (Opening Range)";
+    Input_PeriodEndAsSecondsFromSessionStart.Name = "And/or Seconds (Opening Range)";
     Input_PeriodEndAsSecondsFromSessionStart.SetInt(0);
 
     Input_RoundExt.Name = "Round Extensions to TickSize";
@@ -4417,8 +4367,7 @@ SCSFExport scsf_InitialBalanceSession(SCStudyInterfaceRef sc) {
 
   SCDateTimeMS LastBarDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
   SCDateTimeMS FirstCalculationDate =
-      LastBarDateTime.GetDate() -
-      SCDateTime::DAYS(Input_NumberDaysToCalculate.GetInt() - 1);
+      LastBarDateTime.GetDate() - SCDateTime::DAYS(Input_NumberDaysToCalculate.GetInt() - 1);
 
   SCDateTimeMS CurrentBarDateTime = sc.BaseDateTimeIn[sc.Index];
 
@@ -4427,9 +4376,8 @@ SCSFExport scsf_InitialBalanceSession(SCStudyInterfaceRef sc) {
   if (sc.Index > 0)
     PrevBarDateTime = sc.BaseDateTimeIn[sc.Index - 1];
 
-  if (CurrentBarDateTime.GetDate() <
-      FirstCalculationDate) // Limit calculation to specified number of days
-                            // back
+  if (CurrentBarDateTime.GetDate() < FirstCalculationDate) // Limit calculation to specified number
+                                                           // of days back
     return;
 
   SCDateTimeMS StartDateTime = CurrentBarDateTime;
@@ -4440,8 +4388,7 @@ SCSFExport scsf_InitialBalanceSession(SCStudyInterfaceRef sc) {
   else if (Input_IBType.GetIndex() == 1)
     StartDateTime.SetTime(sc.StartTime2);
   else
-    StartDateTime.SetTime(custom_hour.GetInt() * 3600 +
-                          custom_min.GetInt() * 60);
+    StartDateTime.SetTime(custom_hour.GetInt() * 3600 + custom_min.GetInt() * 60);
 
   if (PrevBarDateTime < StartDateTime && CurrentBarDateTime >= StartDateTime) {
     PeriodFirstIndex = sc.Index;
@@ -4452,9 +4399,9 @@ SCSFExport scsf_InitialBalanceSession(SCStudyInterfaceRef sc) {
 
     // Set end of Initial Balance as minutes from session start
     PeriodEndDateTime = PeriodStartDateTime;
-    PeriodEndDateTime += SCDateTime::SECONDS(
-        Input_PeriodEndAsMinutesFromSessionStart.GetInt() * SECONDS_PER_MINUTE +
-        Input_PeriodEndAsSecondsFromSessionStart.GetInt() - 1);
+    PeriodEndDateTime +=
+        SCDateTime::SECONDS(Input_PeriodEndAsMinutesFromSessionStart.GetInt() * SECONDS_PER_MINUTE +
+                            Input_PeriodEndAsSecondsFromSessionStart.GetInt() - 1);
 
     // set prev bar values to zero to avoid weird line jumps
     for (int x = 0; x < 15; x++) {
@@ -4593,8 +4540,7 @@ SCSFExport scsf_HighLowSession(SCStudyInterfaceRef sc) {
 
     // Inputs
     Input_Session.Name = "High/Low for Session";
-    Input_Session.SetCustomInputStrings(
-        "Day Session (RTH); Evening Session (ETH)");
+    Input_Session.SetCustomInputStrings("Day Session (RTH); Evening Session (ETH)");
     Input_Session.SetCustomInputIndex(0);
 
     Input_NumberDaysToCalculate.Name = "Number of Days to Calculate";
@@ -4625,8 +4571,7 @@ SCSFExport scsf_HighLowSession(SCStudyInterfaceRef sc) {
 
   SCDateTimeMS LastBarDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
   SCDateTimeMS FirstCalculationDate =
-      LastBarDateTime.GetDate() -
-      SCDateTime::DAYS(Input_NumberDaysToCalculate.GetInt() - 1);
+      LastBarDateTime.GetDate() - SCDateTime::DAYS(Input_NumberDaysToCalculate.GetInt() - 1);
 
   SCDateTimeMS CurrentBarDateTime = sc.BaseDateTimeIn[sc.Index];
 
@@ -4635,9 +4580,8 @@ SCSFExport scsf_HighLowSession(SCStudyInterfaceRef sc) {
   if (sc.Index > 0)
     PrevBarDateTime = sc.BaseDateTimeIn[sc.Index - 1];
 
-  if (CurrentBarDateTime.GetDate() <
-      FirstCalculationDate) // Limit calculation to specified number of days
-                            // back
+  if (CurrentBarDateTime.GetDate() < FirstCalculationDate) // Limit calculation to specified number
+                                                           // of days back
     return;
 
   SCDateTimeMS StartDateTime = CurrentBarDateTime;
