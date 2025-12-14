@@ -769,15 +769,16 @@ int SecondsPerDay(int useSecondTimes, int start1, int end1) {
 SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
   SCInputRef tfDownButtonName = sc.Input[0];
   SCInputRef tfUpButtonName = sc.Input[1];
+  // here timeframe inputs: see defaults
   const int TFstart = 10;
   const int TFamt = 10;
-  // here timeframe inputs: see defaults
   SCInputRef setDaysToLoad = sc.Input[TFstart + TFamt];
   SCInputRef barsInChart = sc.Input[TFstart + TFamt + 1];
-  const int toLoadStart = TFstart + TFamt + 2;
-  const int toLoadAmt = 6;
   // here days to load inputs: see defaults
-  const int otherParamsStart = toLoadStart + 10;
+  const int toLoadStart = TFstart + TFamt + 2;
+  const int toLoadAmt = 10;
+
+  const int otherParamsStart = toLoadStart + 15;
   const int otherParamsAmt = 5;
   SCInputRef gotoHistorical = sc.Input[otherParamsStart];
   SCInputRef useSpacing = sc.Input[otherParamsStart + 1];
@@ -791,7 +792,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     // Set the configuration and defaults
     sc.GraphName = "Timeframe Looper";
     sc.StudyDescription = "Change chart timeframe automatically depending on "
-                          "bars spacing || up/down arrow keys";
+                          "bars spacing or up/down arrow keys";
     sc.AutoLoop = 0;
     sc.GraphRegion = 0;
     sc.UpdateAlways = 1;
@@ -845,29 +846,49 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
     barsInChart.Name = "Max Number of bars in chart";
     barsInChart.SetInt(1000);
 
-    sc.Input[toLoadStart].Name = "Days To Load-1min or below";
+    sc.Input[toLoadStart].Name = "Days To Load-Lowest Intraday TF";
     sc.Input[toLoadStart].SetInt(1);
     sc.Input[toLoadStart].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 1].Name = "Days To Load-5min or below";
-    sc.Input[toLoadStart + 1].SetInt(4);
+    sc.Input[toLoadStart + 1].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 1].SetInt(1);
     sc.Input[toLoadStart + 1].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 2].Name = "Days To Load-30min or below";
-    sc.Input[toLoadStart + 2].SetInt(14);
+    sc.Input[toLoadStart + 2].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 2].SetInt(1);
     sc.Input[toLoadStart + 2].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 3].Name = "Days To Load-1H(65m) or below";
-    sc.Input[toLoadStart + 3].SetInt(31);
+    sc.Input[toLoadStart + 3].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 3].SetInt(7);
     sc.Input[toLoadStart + 3].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 4].Name = "Days To Load-Above 1H(65m)";
-    sc.Input[toLoadStart + 4].SetInt(92);
+    sc.Input[toLoadStart + 4].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 4].SetInt(7);
     sc.Input[toLoadStart + 4].SetIntLimits(1, 10000);
 
-    sc.Input[toLoadStart + 5].Name = "Days To Load-Historical";
-    sc.Input[toLoadStart + 5].SetInt(5000);
+    sc.Input[toLoadStart + 5].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 5].SetInt(14);
     sc.Input[toLoadStart + 5].SetIntLimits(1, 10000);
+
+    sc.Input[toLoadStart + 6].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 6].SetInt(31);
+    sc.Input[toLoadStart + 6].SetIntLimits(1, 10000);
+
+    sc.Input[toLoadStart + 7].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 7].SetInt(92);
+    sc.Input[toLoadStart + 7].SetIntLimits(1, 10000);
+
+    sc.Input[toLoadStart + 8].Name = "Days To Load-Next Intraday TF";
+    sc.Input[toLoadStart + 8].SetInt(92);
+    sc.Input[toLoadStart + 8].SetIntLimits(1, 10000);
+
+    sc.Input[toLoadStart + 9].Name = "Days To Load-Highest Intraday TF";
+    sc.Input[toLoadStart + 9].SetInt(92);
+    sc.Input[toLoadStart + 9].SetIntLimits(1, 10000);
+
+    sc.Input[toLoadStart + 10].Name = "Days To Load-Historical";
+    sc.Input[toLoadStart + 10].SetInt(5000);
+    sc.Input[toLoadStart + 10].SetIntLimits(1, 10000);
 
     gotoHistorical.Name = "Go-To Historical charts after intraday list";
     gotoHistorical.SetYesNo(0);
@@ -906,6 +927,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
 
   int spacing = sc.ChartBarSpacing;
   int nextTF = 0;
+  int foundTFindex = 0;
 
   // INCREASE TIMEFRAME
   if ((useSpacing.GetYesNo() == 1 && spacing < minThreshold.GetInt()) ||
@@ -919,17 +941,18 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
       int actualTF = BarPeriod.IntradayChartBarPeriodParameter1;
 
       // get seconds per day to check the day is divisible by the new timeframe
-      int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
+      // int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
       // loop through the timeframe list to find the next timeframe
       for (int i = TFstart; i < TFstart + TFamt; i++) {
         if (sc.Input[i].GetInt() <= actualTF)
           continue;
-        // the day must be evenly divisible by the new timeframe
-        if (secsPerDay % sc.Input[i].GetInt() != 0)
-          continue;
+        // // the day must be evenly divisible by the new timeframe
+        // if (secsPerDay % sc.Input[i].GetInt() != 0)
+        // continue;
 
         nextTF = sc.Input[i].GetInt();
         BarPeriod.IntradayChartBarPeriodParameter1 = nextTF;
+        foundTFindex = i - TFstart;
         break;
       }
 
@@ -945,7 +968,7 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
 
         // explicitly set days to load, so that current value will not be copied
         // (strangely)
-        sc.DaysToLoadInChart = sc.Input[toLoadStart + toLoadAmt - 1].GetInt();
+        sc.DaysToLoadInChart = sc.Input[toLoadStart + toLoadAmt].GetInt();
       }
     }
     // if chart is daily, then go to weekly, monthly....
@@ -986,14 +1009,16 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
       if (BarPeriod.HistoricalChartBarPeriodType > thresholdToIntraday)
         BarPeriod.HistoricalChartBarPeriodType = static_cast<HistoricalChartBarPeriodEnum>(
             static_cast<int>(BarPeriod.HistoricalChartBarPeriodType) - 1);
+      // go to intraday
       else if (gotoHistorical.GetYesNo() == 1) {
         BarPeriod.ChartDataType = INTRADAY_DATA;
-        // get seconds per day to check the day is divisible by the new
-        // timeframe
-        int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
+        // // get seconds per day to check the day is divisible by the new
+        // // timeframe
+        // int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
         for (int x = TFstart + TFamt - 1; x >= TFstart; x--) {
-          if (sc.Input[x].GetInt() != 0 && secsPerDay % sc.Input[x].GetInt() == 0) {
+          if (sc.Input[x].GetInt() != 0) { //  && secsPerDay % sc.Input[x].GetInt() == 0) {
             nextTF = sc.Input[x].GetInt();
+            foundTFindex = x - TFstart;
             break;
           }
         }
@@ -1001,25 +1026,27 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
 
         // explicitly set days to load, so that current value will not be copied
         // (strangely)
-        sc.DaysToLoadInChart = sc.Input[toLoadStart + toLoadAmt - 2].GetInt();
+        // sc.DaysToLoadInChart = sc.Input[toLoadStart + toLoadAmt - 1].GetInt();
+        sc.DaysToLoadInChart = sc.Input[toLoadStart + foundTFindex].GetInt();
       }
     }
     // if intraday, go to next lower timeframe
     else {
       int actualTF = BarPeriod.IntradayChartBarPeriodParameter1;
-      // get seconds per day to check the day is divisible by the new
-      // timeframe
-      int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
+      // // get seconds per day to check the day is divisible by the new
+      // // timeframe
+      // int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
 
       // loop through the timeframe list to find the next lower timeframe
       for (int i = TFstart + TFamt - 1; i >= TFstart; i--) {
         if (sc.Input[i].GetInt() >= actualTF || sc.Input[i].GetInt() == 0)
           continue;
-        // the day must be evenly divisible by the new timeframe
-        if (secsPerDay % sc.Input[i].GetInt() != 0)
-          continue;
+        // // the day must be evenly divisible by the new timeframe
+        // if (secsPerDay % sc.Input[i].GetInt() != 0)
+        // continue;
         nextTF = sc.Input[i].GetInt();
         BarPeriod.IntradayChartBarPeriodParameter1 = nextTF;
+        foundTFindex = i - TFstart;
         break;
       }
     }
@@ -1049,22 +1076,34 @@ SCSFExport scsf_TimeframeLooper(SCStudyInterfaceRef sc) {
       //                      : sc.EndTime1 - sc.StartTime1 + 1;
       //
       // secsPerDay = secsPerDay > 1 ? secsPerDay : 60 * 60 * 24;
-      int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
-      int barsPerDay = sc.Round(((float)secsPerDay) / nextTF);
+      // int secsPerDay = SecondsPerDay(sc.UseSecondStartEndTimes, sc.StartTime1, sc.EndTime1);
+      // int barsPerDay = sc.Round(((float)secsPerDay) / nextTF);
+      // find how many bars are there in the last day
+      int barsLastDay = 1;
+      SCDateTime time1dayBefore = sc.BaseDateTimeIn[sc.ArraySize - 1].SubtractDays(1);
 
-      int nDaysToLoad = sc.Round(((float)barsInChart.GetInt()) / barsPerDay);
-      nDaysToLoad = max(1, nDaysToLoad);    // take today into account
-      nDaysToLoad += (nDaysToLoad / 5) * 2; // add weekends
+      for (int x = sc.ArraySize - 1; x > 0; x--) {
+        if (sc.BaseDateTimeIn[x] <= time1dayBefore &&
+            sc.BaseDateTimeIn[x].GetTimeInSeconds() <= time1dayBefore.GetTimeInSeconds()) {
+          barsLastDay = sc.ArraySize - 1 - x;
+        }
+      }
+
+      int nDaysToLoad = sc.Round(((float)barsInChart.GetInt()) / barsLastDay);
+      nDaysToLoad = max(1, nDaysToLoad); // take today into account
+      if (nDaysToLoad > 5)
+        nDaysToLoad += (nDaysToLoad / 5) * 2; // add weekends
 
       sc.DaysToLoadInChart = nDaysToLoad;
     }
     // if setting depending on timeframe
     else if (setDaysToLoad.GetIndex() == 2) {
-      sc.DaysToLoadInChart = nextTF > 3900   ? sc.Input[toLoadStart + 4].GetInt()
-                             : nextTF > 1800 ? sc.Input[toLoadStart + 3].GetInt()
-                             : nextTF > 300  ? sc.Input[toLoadStart + 2].GetInt()
-                             : nextTF > 60   ? sc.Input[toLoadStart + 1].GetInt()
-                                             : sc.Input[toLoadStart].GetInt();
+      sc.DaysToLoadInChart = sc.Input[toLoadStart + foundTFindex].GetInt();
+      // sc.DaysToLoadInChart = nextTF > 3900   ? sc.Input[toLoadStart + 4].GetInt()
+      //                        : nextTF > 1800 ? sc.Input[toLoadStart + 3].GetInt()
+      //                        : nextTF > 300  ? sc.Input[toLoadStart + 2].GetInt()
+      //                        : nextTF > 60   ? sc.Input[toLoadStart + 1].GetInt()
+      //                                        : sc.Input[toLoadStart].GetInt();
     }
   }
 
@@ -1099,8 +1138,9 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
 
   SCInputRef nTicks = sc.Input[0];
   SCInputRef nHiLos = sc.Input[1];
-  SCInputRef interpColors = sc.Input[2];
+  SCInputRef nToColor = sc.Input[2];
   SCInputRef clear = sc.Input[3];
+  SCInputRef interpColors = sc.Input[4];
 
   // CONSTANTS FOR SUBGRAPH INDEXES OF PREVIOUS HIGHS AND LOWS
   // old hi&los will be automatically created and numbered from
@@ -1114,87 +1154,91 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     // SUBGRAPHS
     sc.GraphName = "Real His & Los";
     sc.StudyDescription = "Indicator shows new swing Highs and Lows";
-    sc.AutoLoop = 1;
+    sc.AutoLoop = 0;
     sc.GraphRegion = 0;
-    sc.MaintainVolumeAtPriceData = 1;
+    // sc.MaintainVolumeAtPriceData = 1;
     sc.DisplayStudyName = 0;
     sc.DisplayStudyInputValues = 0;
     sc.GlobalDisplayStudySubgraphsNameAndValue = 0;
     sc.DrawStudyUnderneathMainPriceGraph = 1;
     // set initial transparency
-    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID, 92);
+    sc.SetChartStudyTransparencyLevel(sc.ChartNumber, sc.StudyGraphInstanceID, 80);
 
     hiGraph.Name = "Last High";
-    hiGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    hiGraph.LineWidth = 10;
+    hiGraph.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP;
+    // hiGraph.LineWidth = 10;
     hiGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     hiGraph.PrimaryColor = RGB(0, 0, 0);
-    hiGraph.DrawZeros = 0;
+    // hiGraph.DrawZeros = 1;
     hiGraph.ShortName = "▼ HI";
 
     loGraph.Name = "Last Low";
-    loGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    loGraph.LineWidth = 10;
+    loGraph.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM;
+    // loGraph.LineWidth = 10;
     loGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     loGraph.PrimaryColor = RGB(0, 0, 0);
-    loGraph.DrawZeros = 0;
+    // loGraph.DrawZeros = 1;
     loGraph.ShortName = "▲ LO";
 
     tHiGraph.Name = "Temporary High";
     tHiGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    tHiGraph.LineWidth = 6;
+    // tHiGraph.LineWidth = 6;
     tHiGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     tHiGraph.PrimaryColor = RGB(0, 145, 215);
-    tHiGraph.DrawZeros = 0;
+    // tHiGraph.DrawZeros = 1;
     tHiGraph.ShortName = "▼t.hi";
 
     tLoGraph.Name = "Temporary Low";
     tLoGraph.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
-    tLoGraph.LineWidth = 6;
+    // tLoGraph.LineWidth = 6;
     tLoGraph.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT | LL_NAME_REVERSE_COLORS;
     tLoGraph.PrimaryColor = RGB(255, 0, 0);
-    tLoGraph.DrawZeros = 0;
+    // tLoGraph.DrawZeros = 1;
     tLoGraph.ShortName = "▲t.lo";
 
     // old highs will copy these properties
     prevHisGraphs.Name = "Previous Highs";
-    prevHisGraphs.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP; // DRAWSTYLE_TRIANGLE_DOWN;
-    prevHisGraphs.LineWidth = 8;
+    prevHisGraphs.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
+    // prevHisGraphs.LineWidth = 8;
     prevHisGraphs.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT;
     prevHisGraphs.PrimaryColor = RGB(255, 0, 0);
-    prevHisGraphs.SecondaryColor = RGB(255, 150, 150);
+    prevHisGraphs.SecondaryColor = RGB(255, 190, 190);
     prevHisGraphs.SecondaryColorUsed = 1;
-    prevHisGraphs.DrawZeros = 0;
+    // prevHisGraphs.DrawZeros = 0;
     prevHisGraphs.ShortName = "▼";
     prevHisGraphs.UseTransparentLabelBackground = 1;
 
     // old lows will copy these properties
     prevLosGraphs.Name = "Previous Lows";
-    prevLosGraphs.DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM; // DRAWSTYLE_TRIANGLE_UP;
-    prevLosGraphs.LineWidth = 8;
+    prevLosGraphs.DrawStyle = DRAWSTYLE_SUBGRAPH_NAME_AND_VALUE_LABELS_ONLY;
+    // prevLosGraphs.LineWidth = 8;
     prevLosGraphs.LineLabel = LL_DISPLAY_NAME | LL_NAME_ALIGN_FAR_RIGHT;
     prevLosGraphs.PrimaryColor = RGB(0, 145, 215);
-    prevLosGraphs.SecondaryColor = RGB(190, 170, 170);
+    prevLosGraphs.SecondaryColor = RGB(170, 220, 255);
     prevLosGraphs.SecondaryColorUsed = 1;
-    prevLosGraphs.DrawZeros = 0;
+    // prevLosGraphs.DrawZeros = 0;
     prevLosGraphs.ShortName = "▲";
     prevLosGraphs.UseTransparentLabelBackground = 1;
-    prevLosGraphs.UseLabelsColor = 1;
-    prevLosGraphs.LabelsColor = RGB(0, 145, 215);
+    // prevLosGraphs.UseLabelsColor = 1;
+    // prevLosGraphs.LabelsColor = RGB(0, 145, 215);
 
     // INPUTS
     nTicks.Name = "Number of ticks to confirm new swing Hi&Lo";
-    nTicks.SetInt(12);
+    nTicks.SetInt(20);
 
     nHiLos.Name = "Number of previous Hi&Los to display";
     nHiLos.SetInt(12);
     nHiLos.SetIntLimits(0, MAX_P_HISLOS);
 
-    interpColors.Name = "Interp. Prim/Sec Colors for Prev HiLos";
-    interpColors.SetYesNo(0);
+    nToColor.Name = "Number of Ranges to Color";
+    nToColor.SetInt(2);
+    nToColor.SetIntLimits(0, MAX_P_HISLOS);
 
     clear.Name = "Clear Current Trades on break of curr. Hi/Lo";
-    clear.SetYesNo(0);
+    clear.SetYesNo(1);
+
+    interpColors.Name = "Interp. Prim/Sec Colors for Prev HiLos";
+    interpColors.SetYesNo(1);
 
     return;
   }
@@ -1208,18 +1252,21 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
   int &lastIndex = sc.GetPersistentInt(0);
   int &highBroken = sc.GetPersistentInt(1);
   int &lowBroken = sc.GetPersistentInt(2);
+  int &firstVisibleBar = sc.GetPersistentInt(3);
 
+  // variables
   int64_t &LastProcessedSequence = sc.GetPersistentInt64(0);
   int i = sc.Index;
-
+  bool valueChanged = false;
   // Get the Time and Sales
   c_SCTimeAndSalesArray TimeSales;
   sc.GetTimeAndSales(TimeSales);
 
-  // on start, configure all subgraphs acc. to inputs and create enough
-  // subgraphs for nHiLos to display
-  if (sc.IsFullRecalculation && i == 0) {
-    // old hi&los will be automatically created and numbered from subgraph[53]
+  // INITIALIZATION
+  //  on start, configure all subgraphs acc. to inputs and create enough
+  //  subgraphs for nHiLos to display
+  if (sc.IsFullRecalculation) { // && i == 0) {
+    // old hi&los subgraphs will be automatically created and numbered from subgraph[53]
     // downwards, copying the properties specified for the prevHis and prevLos
     // subgraphs ([54] and [55])
     for (int x = 1; x <= MAX_P_HISLOS; x++) {
@@ -1234,7 +1281,8 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
                 ? prevHisGraphs.PrimaryColor
                 : sc.RGBInterpolate(prevHisGraphs.PrimaryColor, prevHisGraphs.SecondaryColor,
                                     sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
-        sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].DrawZeros = 0;
+        // sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor = prevHisGraphs.PrimaryColor;
+        // sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].DrawZeros = 0;
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].ShortName.Format(
             prevHisGraphs.ShortName + " %i " + prevHisGraphs.ShortName, x);
         sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].UseLabelsColor = prevHisGraphs.UseLabelsColor;
@@ -1252,7 +1300,8 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
                 ? prevLosGraphs.PrimaryColor
                 : sc.RGBInterpolate(prevLosGraphs.PrimaryColor, prevLosGraphs.SecondaryColor,
                                     sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
-        sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].DrawZeros = 0;
+        // sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].PrimaryColor = prevLosGraphs.PrimaryColor;
+        // sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].DrawZeros = 0;
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].ShortName.Format(
             prevLosGraphs.ShortName + " %i " + prevLosGraphs.ShortName, x);
         sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].UseLabelsColor = prevLosGraphs.UseLabelsColor;
@@ -1267,17 +1316,23 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       }
     }
 
-    // set on first calculation
-    LastProcessedSequence = 0;
-    lastIndex = 0;
-    newLo = sc.Low[0];
-    newHi = 0;
-    lastTradeAtAsk = sc.Low[0];
-    lastTradeAtBid = sc.Low[0];
-  }
+    // how many high-low ranges to fill
+    for (int x = 1; x <= nToColor.GetInt(); x++) {
+      sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].DrawStyle = DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_TOP;
+      sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)].DrawStyle =
+          DRAWSTYLE_TRANSPARENT_FILL_RECTANGLE_BOTTOM;
+    }
 
-  // if new candle, copy last subgraph values and delete previous candle's
-  // values
+    // set initial values on first calculation
+    // LastProcessedSequence = TimeSales[TimeSales.Size() - 1].Sequence;
+    LastProcessedSequence = 0;
+    lastIndex = i;
+    newHi = 0;
+    newLo = 0;
+  }
+  /// END OF INITIALIZATION
+
+  // if new candle, copy last subgraph values
   if (i != lastIndex)
     for (int x = 0; x < 60; x++) {
       sc.Subgraph[x][i] = sc.Subgraph[x][i - 1];
@@ -1291,7 +1346,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     limit = TimeSales.Size();
     if (limit == 0)
       return; // No Time and Sales data available for the symbol
-    int TSIndex = limit - 1;
+    TSIndex = limit - 1;
     for (TSIndex; TSIndex > 0; TSIndex--) {
       if (TimeSales[TSIndex - 1].Sequence <= LastProcessedSequence)
         break;
@@ -1299,71 +1354,41 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
   }
 
   // now, iterate over the new Time&Sales entries
-  // if calculating on bars (at start) the for loop will be executed only once
-  // as per previous code
   for (TSIndex; TSIndex < limit; TSIndex++) {
-    // calculation on historical bars: read bars' VAP to look for last trades at
-    // bid and ask
-    if (sc.IsFullRecalculation) {
-      // GET VAP BAR DATA TO GET THE HIGHEST TRADE AT BID AND THE LOWEST AT ASK
-      // IN THIS BAR define VAP for historical calculations
-      s_VolumeAtPriceV2 *p_VolumeAtPrice = NULL;
-      // check there is VolumeAtPrice data
-      if (static_cast<int>(sc.VolumeAtPriceForBars->GetNumberOfBars()) < sc.ArraySize)
-        return;
-      int VAPSizeAtBarIndex = sc.VolumeAtPriceForBars->GetSizeAtBarIndex(i);
+    // if there haven't been any new T&S records or this record is
+    // a bid-ask update, continue
+    if (TimeSales[TSIndex].Sequence <= LastProcessedSequence ||
+        TimeSales[TSIndex].Type == SC_TS_BIDASKVALUES)
+      continue;
 
-      for (int VAPIndex = 0; VAPIndex < VAPSizeAtBarIndex; VAPIndex++) {
-        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(i, VAPIndex, &p_VolumeAtPrice))
-          break;
+    // see whether this trade took place at the bid or at the ask
+    if (TimeSales[TSIndex].Type == SC_TS_BID) {
+      lastTradeAtBid = TimeSales[TSIndex].Bid * sc.RealTimePriceMultiplier;
 
-        if (p_VolumeAtPrice)
-          if (p_VolumeAtPrice->AskVolume > 0) {
-            lastTradeAtAsk = p_VolumeAtPrice->PriceInTicks * sc.TickSize;
-            break;
-          }
-      }
-
-      for (int VAPIndex = VAPSizeAtBarIndex - 1; VAPIndex >= 0; VAPIndex--) {
-        if (!sc.VolumeAtPriceForBars->GetVAPElementAtIndex(i, VAPIndex, &p_VolumeAtPrice))
-          break;
-
-        if (p_VolumeAtPrice)
-          if (p_VolumeAtPrice->BidVolume > 0) {
-            lastTradeAtBid = p_VolumeAtPrice->PriceInTicks * sc.TickSize;
-            break;
-          }
-      }
-    }
-    // ACTUAL READING IF THE TIME&SALES IN REAL-TIME CALCULATIONS
-    else {
-      // if there haven't been any new T&S records || this record is
-      // a bid-ask update, continue
-      if (TimeSales[TSIndex].Sequence <= LastProcessedSequence ||
-          TimeSales[TSIndex].Type == SC_TS_BIDASKVALUES)
-        continue;
-
-      // see whether this trade took place at the bid || at the ask
-      if (TimeSales[TSIndex].Type == SC_TS_BID) {
-        lastTradeAtBid = TimeSales[TSIndex].Bid * sc.RealTimePriceMultiplier;
-
-        // see if this trade broke the current low and clear current trades
-        if (clear.GetYesNo() && lastTradeAtBid < loGraph[i] && lowBroken == false) {
+      // see if this trade broke the current low and clear current trades
+      if (lastTradeAtBid < loGraph[i] && lowBroken == false) {
+        lowBroken = true;
+        if (clear.GetYesNo())
           sc.ClearCurrentTradedBidAskVolume();
-          lowBroken = true;
-        }
-      } else if (TimeSales[TSIndex].Type == SC_TS_ASK) {
-        lastTradeAtAsk = TimeSales[TSIndex].Ask * sc.RealTimePriceMultiplier;
+      }
+    } else if (TimeSales[TSIndex].Type == SC_TS_ASK) {
+      lastTradeAtAsk = TimeSales[TSIndex].Ask * sc.RealTimePriceMultiplier;
 
-        // see if this trade borke the current high and clear current trades
-        if (clear.GetYesNo() && lastTradeAtAsk > hiGraph[i] && highBroken == false) {
+      // see if this trade borke the current high and clear current trades
+      if (lastTradeAtAsk > hiGraph[i] && highBroken == false) {
+        highBroken = true;
+        if (clear.GetYesNo())
           sc.ClearCurrentTradedBidAskVolume();
-          highBroken = true;
-        }
       }
     }
 
-    // HAS A NEW HIGH || LOW BEEN CONFIRMED?
+    // first newLo and newHi will be the first trade
+    if (sc.IsFullRecalculation && newHi == 0 && newLo == 0) {
+      newHi = lastTradeAtBid != 0 ? lastTradeAtBid : lastTradeAtAsk;
+      newLo = newHi;
+    }
+
+    // HAS A NEW HIGH OR LOW BEEN CONFIRMED?
     // if there is a new confirmed high (there must be trades at ask at newHi -
     // nTicks)
     if (newHi != 0 && lastTradeAtAsk <= (newHi - nTicks.GetInt() * sc.TickSize)) {
@@ -1380,10 +1405,46 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       // set subgraph for just confirmed high
       hiGraph[i] = newHi;
 
+      // color ranges after confirming this high
+      if (nToColor.GetInt() > 0) {
+        // are we making higher highs and higher lows?
+        if (loGraph[i] > sc.Subgraph[FIRST_P_LOW][i] && hiGraph[i] > sc.Subgraph[FIRST_P_HIGH][i])
+          sc.Subgraph[FIRST_P_HIGH].PrimaryColor = prevLosGraphs.PrimaryColor;
+        // are we making lower highs and lower lows?
+        if (hiGraph[i] < sc.Subgraph[FIRST_P_HIGH][i] && loGraph[i] < sc.Subgraph[FIRST_P_LOW][i])
+          sc.Subgraph[FIRST_P_HIGH].PrimaryColor = prevHisGraphs.PrimaryColor;
+        // in case we are coloring more than one range
+        for (int x = 2; x <= nToColor.GetInt(); x++) {
+          // higher highs and lows
+          if (sc.Subgraph[FIRST_P_HIGH - 2 * (x - 2)][i] >
+                  sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)][i] &&
+              sc.Subgraph[FIRST_P_LOW - 2 * (x - 2)][i] > sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i])
+            sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor =
+                nHiLos.GetInt() == 1 || interpColors.GetYesNo() == 0
+                    ? prevLosGraphs.PrimaryColor
+                    : sc.RGBInterpolate(prevLosGraphs.PrimaryColor, prevLosGraphs.SecondaryColor,
+                                        sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
+
+          // sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor = prevLosGraphs.PrimaryColor;
+          // lower highs and lows
+          if (sc.Subgraph[FIRST_P_HIGH - 2 * (x - 2)][i] <
+                  sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)][i] &&
+              sc.Subgraph[FIRST_P_LOW - 2 * (x - 2)][i] < sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i])
+            sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor =
+                nHiLos.GetInt() == 1 || interpColors.GetYesNo() == 0
+                    ? prevHisGraphs.PrimaryColor
+                    : sc.RGBInterpolate(prevHisGraphs.PrimaryColor, prevHisGraphs.SecondaryColor,
+                                        sqrt((float)(x - 1) / (nHiLos.GetInt() - 1)));
+          // sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor = prevHisGraphs.PrimaryColor;
+        }
+      }
+
       // reset "new" variables to look for next lo
       newLo = lastTradeAtAsk;
       newHi = 0;
       highBroken = false;
+      // update subgraph values
+      valueChanged = true;
     } else
       // if there is a new confirmed low (there must be trades at bid at newLo +
       // nTicks)
@@ -1393,35 +1454,72 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
           sc.Subgraph[FIRST_P_LOW - 2 * x][i] = sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i];
         }
 
-        // move current high to first old high
+        // move current low to first old low
         if (nHiLos.GetInt() > 0)
           sc.Subgraph[FIRST_P_LOW][i] = loGraph[i];
 
         // set subgraph for just confirmed low
         loGraph[i] = newLo;
 
+        // color ranges after confirming this low
+        if (nToColor.GetInt() > 0) {
+          // are we making higher highs and higher lows?
+          if (loGraph[i] > sc.Subgraph[FIRST_P_LOW][i] && hiGraph[i] > sc.Subgraph[FIRST_P_HIGH][i])
+            sc.Subgraph[FIRST_P_HIGH].PrimaryColor = prevLosGraphs.PrimaryColor;
+          // are we making lower highs and lower lows?
+          if (hiGraph[i] < sc.Subgraph[FIRST_P_HIGH][i] && loGraph[i] < sc.Subgraph[FIRST_P_LOW][i])
+            sc.Subgraph[FIRST_P_HIGH].PrimaryColor = prevHisGraphs.PrimaryColor;
+          // in case we are coloring more than one range
+          for (int x = 2; x <= nToColor.GetInt(); x++) {
+            // higher highs and lows
+            if (sc.Subgraph[FIRST_P_HIGH - 2 * (x - 2)][i] >
+                    sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)][i] &&
+                sc.Subgraph[FIRST_P_LOW - 2 * (x - 2)][i] >
+                    sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i])
+              sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor = prevLosGraphs.PrimaryColor;
+            // lower highs and lows
+            if (sc.Subgraph[FIRST_P_HIGH - 2 * (x - 2)][i] <
+                    sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)][i] &&
+                sc.Subgraph[FIRST_P_LOW - 2 * (x - 2)][i] <
+                    sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i])
+              sc.Subgraph[FIRST_P_HIGH - 2 * (x - 1)].PrimaryColor = prevHisGraphs.PrimaryColor;
+          }
+        }
+
         // reset "new" variables to look for next high
         newHi = lastTradeAtBid;
         newLo = 0;
         lowBroken = false;
+        // update subgraph values
+        valueChanged = true;
       } else
-        // check temporary highs || lows
+        // check temporary highs or lows
         if (newLo != 0 && lastTradeAtAsk < newLo) {
-          newLo = lastTradeAtAsk; // a new temp low will be created with trades
-                                  // at ask
+          // a new temp low will be created with trades at the ask
+          newLo = lastTradeAtAsk;
+          valueChanged = true;
         } else if (newHi != 0 && lastTradeAtBid > newHi) {
-          newHi = lastTradeAtBid; // a new temp high will be created with trades
-                                  // at bid
+          // a new temp high will be created with trades at the bid
+          newHi = lastTradeAtBid;
+          valueChanged = true;
         }
 
-    // save temporary hi || low into subgraphs
+    // save temporary his and lows into subgraphs
     tHiGraph[i] = newHi;
     tLoGraph[i] = newLo;
   }
 
+  // if any subgraph value has changed or if the first visible bar has changed
+  // extend all subgraph values to all visible bars
+  if (valueChanged || firstVisibleBar != sc.IndexOfFirstVisibleBar) {
+    firstVisibleBar = sc.IndexOfFirstVisibleBar;
+    for (int y = firstVisibleBar; y < i; y++)
+      for (int x = 0; x < 60; x++)
+        sc.Subgraph[x][y] = sc.Subgraph[x][i];
+  }
+
   // SAVE VALUES FOR NEXT UPDATE
   LastProcessedSequence = TimeSales[TimeSales.Size() - 1].Sequence;
-  // save candle index
   lastIndex = i;
 }
 
@@ -1974,8 +2072,8 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
         // set the rectangle
         Rect.BeginIndex = type == 4 ? obIndex : mmIndex;
         Rect.BeginValue =
-            type != 4 || obIndex != sc.Index ? begin : 0; // if looking for order block and none has
-                                                          // been found, set to zero
+            type != 4 || obIndex != sc.Index ? begin : 0; // if looking for order block and none
+                                                          // has been found, set to zero
         Rect.EndValue = end;
         // if highlighting order blocks and any bar since the low has already
         // broken the order block, do not extend rectangle if(type == 4 &&
@@ -2061,8 +2159,8 @@ SCSFExport scsf_Levels(SCStudyInterfaceRef sc) {
         // set the rectangle
         Rect.BeginIndex = type == 4 ? obIndex : mmIndex;
         Rect.BeginValue =
-            type != 4 || obIndex != sc.Index ? begin : 0; // if looking for order block and none has
-                                                          // been found, set to zero
+            type != 4 || obIndex != sc.Index ? begin : 0; // if looking for order block and none
+                                                          // has been found, set to zero
         Rect.EndValue = end;
         // if highlighting order blocks and any bar since the high has already
         // broken the order block, do not extend rectangle if(type == 4 &&
@@ -2732,6 +2830,8 @@ SCSFExport scsf_AutoVbP(SCStudyInterfaceRef sc) {
   // be the higher the magic number, the thinner and more VP bars there will be
   SCInputRef i_DetailLevel = sc.Input[1];
   SCInputRef i_Step = sc.Input[2];
+  SCInputRef setRangeCharts = sc.Input[3];
+  SCInputRef vapMultForRange = sc.Input[4];
 
   // number of inputs to set target VBP studies
   const int MAX_VBP_STUDIES = 8;
@@ -2739,18 +2839,26 @@ SCSFExport scsf_AutoVbP(SCStudyInterfaceRef sc) {
   // Configuration
   if (sc.SetDefaults) {
     sc.GraphRegion = 0;
-    sc.GraphName = "Auto set VbPs ticks per bar";
+    sc.GraphName = "Auto set VAP for Studies & Chart";
     sc.AutoLoop = 0;
     // update always so we don't have to wait for incoming ticks (market closed)
     sc.UpdateAlways = 1;
 
     // INPUTS CONFIG
-    useVap.Name = "Use VAP setting in Chart Settings";
+    useVap.Name = "Change Chart's VAP setting";
     useVap.SetYesNo(0);
-    i_DetailLevel.Name = "VbPs' detail level";
-    i_DetailLevel.SetInt(100);
+
+    i_DetailLevel.Name = "Volume At Price detail level";
+    i_DetailLevel.SetInt(120);
+
     i_Step.Name = "Tick-size step to increase/decrease detail";
     i_Step.SetInt(4);
+
+    setRangeCharts.Name = "Set Range candles as VAP multiples";
+    setRangeCharts.SetYesNo(0);
+
+    vapMultForRange.Name = "Number of VAPs per Range Candle";
+    vapMultForRange.SetInt(15);
 
     // target TPO study
     sc.Input[9].Name = "Target TPO study";
@@ -2765,94 +2873,100 @@ SCSFExport scsf_AutoVbP(SCStudyInterfaceRef sc) {
     return;
   }
 
-  if (sc.IsFullRecalculation) {
-    // set step to the nearest multiplier of sc.VolumeAtPriceMultiplier to avoid
-    // VbP redraw problems
-    int step = i_Step.GetInt();
-    i_Step.SetInt(max(step - step % sc.VolumeAtPriceMultiplier, sc.VolumeAtPriceMultiplier));
-  }
+  // save VAP ticks
+  int &currentTicks = sc.GetPersistentInt(0);
 
-  // VbP Ticks Per Volume Bar is input 32, ID 31
-  int inputIdx = 31;
+  // if using detail level specified in inputs
+  float vHigh, vLow;
+  int vDiff;
+  int detail = i_DetailLevel.GetInt();
 
-  // if setting VbP's Ticks-per-bar according to Volume At Price Multiplier in
-  // ChartSettings
-  if (useVap.GetInt() == 1) {
+  // fetch the graph's price scale's high and low value so we can automate the
+  sc.GetMainGraphVisibleHighAndLow(vHigh, vLow);
 
+  // calc the range of visible prices
+  // DIVIDE BY TICK-SIZE TO GET NUMBER OF VISIBLE TICKS
+  vDiff = sc.Round((vHigh - vLow) / sc.TickSize);
+
+  // divide range by detail level to get the desired VbP Ticks Per Bar value and
+  int targetTicksPerBar = sc.Round(vDiff / detail);
+
+  // in case we are not setting the VAP chart setting, use a step that is a multiplier of
+  // sc.VolumeAtPriceMultiplier to avoid VbP redraw problems
+  int step = useVap.GetYesNo() ? i_Step.GetInt()
+                               : max(i_Step.GetInt() - i_Step.GetInt() % sc.VolumeAtPriceMultiplier,
+                                     sc.VolumeAtPriceMultiplier);
+
+  // adapt targetTicksPerBar to the specified step or set its minimum
+  if (targetTicksPerBar >= step)
+    targetTicksPerBar -= targetTicksPerBar % step;
+  else
+    targetTicksPerBar =
+        useVap.GetYesNo() || sc.VolumeAtPriceMultiplier > step ? 1 : sc.VolumeAtPriceMultiplier;
+
+  if (targetTicksPerBar != currentTicks) {
+    // flag to redraw chart in case we change any target-VbP
+    bool redraw = false;
+
+    // set ticks for TPO study
+    int studyId = sc.Input[9].GetStudyID();
+    if (studyId != 0) {
+      int prevValue;
+      sc.GetChartStudyInputInt(sc.ChartNumber, studyId, 0, prevValue);
+
+      if (targetTicksPerBar != prevValue) {
+        sc.SetChartStudyInputInt(sc.ChartNumber, studyId, 0, targetTicksPerBar);
+        redraw = true;
+      }
+    }
+
+    // VbP Ticks Per Volume Bar is input 32, ID 31
+    int inputIdx = 31;
+
+    // set ticks for VbP studies
     for (int x = 0; x < MAX_VBP_STUDIES; x++) {
       int studyId = sc.Input[10 + x].GetStudyID();
       if (studyId != 0) {
         int prevValue;
         sc.GetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, prevValue);
-        if (prevValue != sc.VolumeAtPriceMultiplier)
-          sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, sc.VolumeAtPriceMultiplier);
+
+        if (targetTicksPerBar != prevValue) {
+          sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, targetTicksPerBar);
+          redraw = true;
+        }
       }
     }
 
-    return;
-  }
+    // if changing chart's VAP setting
+    if (useVap.GetYesNo()) {
+      if (targetTicksPerBar != sc.VolumeAtPriceMultiplier) {
+        // set range charts
+        if (setRangeCharts.GetYesNo()) {
+          // get period parameters
+          n_ACSIL::s_BarPeriod BarPeriod;
+          sc.GetBarPeriodParameters(BarPeriod);
 
-  // if using detail level specified in inputs
-  float vHigh, vLow; //, vDiff;
-  int vDiff;
-  int detail = i_DetailLevel.GetInt();
-
-  // fetch the graph's price scale's high and low value so we can automate the
-  // Ticks setting on VbP
-  sc.GetMainGraphVisibleHighAndLow(vHigh, vLow);
-
-  // calc the range of visible prices
-  // DIVIDE BY TICK-SIZE TO GET NUMBER OF VISIBLE TICKS
-  // vDiff = (vHigh - vLow) / sc.TickSize;
-  vDiff = sc.Round((vHigh - vLow) / sc.TickSize);
-
-  // divide range by detail level to get the desired VbP Ticks Per Bar value and
-  // don't allow it to be less than the VAP multiplier
-  // int targetTicksPerBar = max(sc.Round(vDiff / detail),
-  // sc.VolumeAtPriceMultiplier);
-  int targetTicksPerBar = sc.Round(vDiff / detail);
-
-  // adapt targetTicksPerBar to the specified step
-  if (targetTicksPerBar >= i_Step.GetInt())
-    targetTicksPerBar -= targetTicksPerBar % i_Step.GetInt();
-  // if targetTicksPerBar is less than the step but greater than VAP multiplier,
-  // then modify it as a VAP multiplier multiple else if(targetTicksPerBar >
-  // sc.VolumeAtPriceMultiplier) 	targetTicksPerBar -= targetTicksPerBar %
-  // sc.VolumeAtPriceMultiplier;
-  else
-    targetTicksPerBar = sc.VolumeAtPriceMultiplier;
-
-  // flag to redraw chart in case we change any target-VbP
-  bool redraw = false;
-
-  // set ticks for TPO study
-  int studyId = sc.Input[9].GetStudyID();
-  if (studyId != 0) {
-    int prevValue;
-    sc.GetChartStudyInputInt(sc.ChartNumber, studyId, 0, prevValue);
-
-    if (targetTicksPerBar != prevValue) {
-      sc.SetChartStudyInputInt(sc.ChartNumber, studyId, 0, targetTicksPerBar);
-      redraw = true;
-    }
-  }
-
-  // set ticks for VbP studies
-  for (int x = 0; x < MAX_VBP_STUDIES; x++) {
-    int studyId = sc.Input[10 + x].GetStudyID();
-    if (studyId != 0) {
-      int prevValue;
-      sc.GetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, prevValue);
-
-      if (targetTicksPerBar != prevValue) {
-        sc.SetChartStudyInputInt(sc.ChartNumber, studyId, inputIdx, targetTicksPerBar);
-        redraw = true;
+          // change values only if chart type is range bars
+          if (BarPeriod.ChartDataType == INTRADAY_DATA &&
+              BarPeriod.IntradayChartBarPeriodType == IBPT_RANGE_IN_TICKS_STANDARD) //&&
+          //    BarPeriod.IntradayChartBarPeriodType <= IBPT_RANGE_IN_TICKS_FILL_GAPS)
+          {
+            BarPeriod.IntradayChartBarPeriodParameter1 =
+                vapMultForRange.GetInt() * targetTicksPerBar;
+            sc.SetBarPeriodParameters(BarPeriod);
+          }
+        }
+        sc.SetVolumeAtPriceMultiplierForChart(targetTicksPerBar, sc.ChartNumber);
+        redraw = false;
       }
     }
-  }
 
-  if (redraw)
-    sc.RecalculateChart(sc.ChartNumber);
+    if (redraw)
+      sc.RecalculateChart(sc.ChartNumber);
+
+    // save visible ticks
+    currentTicks = targetTicksPerBar;
+  }
 }
 
 SCSFExport scsf_StopsOnChart(SCStudyInterfaceRef sc) {
@@ -4376,8 +4490,8 @@ SCSFExport scsf_InitialBalanceSession(SCStudyInterfaceRef sc) {
   if (sc.Index > 0)
     PrevBarDateTime = sc.BaseDateTimeIn[sc.Index - 1];
 
-  if (CurrentBarDateTime.GetDate() < FirstCalculationDate) // Limit calculation to specified number
-                                                           // of days back
+  if (CurrentBarDateTime.GetDate() < FirstCalculationDate) // Limit calculation to specified
+                                                           // number of days back
     return;
 
   SCDateTimeMS StartDateTime = CurrentBarDateTime;
@@ -4580,8 +4694,8 @@ SCSFExport scsf_HighLowSession(SCStudyInterfaceRef sc) {
   if (sc.Index > 0)
     PrevBarDateTime = sc.BaseDateTimeIn[sc.Index - 1];
 
-  if (CurrentBarDateTime.GetDate() < FirstCalculationDate) // Limit calculation to specified number
-                                                           // of days back
+  if (CurrentBarDateTime.GetDate() < FirstCalculationDate) // Limit calculation to specified
+                                                           // number of days back
     return;
 
   SCDateTimeMS StartDateTime = CurrentBarDateTime;
