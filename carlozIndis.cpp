@@ -1341,11 +1341,8 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
   // READ T&S ARRAY TO SEE ALL PRICES
   // first find first T&S entry from which to calculate in this update
   // or skip if calculating on bars at start of indicator's life
-  int TSIndex = 0, limit = 1;
-  if (!sc.IsFullRecalculation) {
-    limit = TimeSales.Size();
-    if (limit == 0)
-      return; // No Time and Sales data available for the symbol
+  int TSIndex = 0, limit = TimeSales.Size();
+  if (limit != 0) {
     TSIndex = limit - 1;
     for (TSIndex; TSIndex > 0; TSIndex--) {
       if (TimeSales[TSIndex - 1].Sequence <= LastProcessedSequence)
@@ -1507,6 +1504,12 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     // save temporary his and lows into subgraphs
     tHiGraph[i] = newHi;
     tLoGraph[i] = newLo;
+  }
+
+  // fallback in case no values are assigned to newHi and newLo (just after indicator insertion)
+  if (newHi == 0 && newLo == 0) {
+    newHi = sc.Ask;
+    newLo = sc.Bid;
   }
 
   // if any subgraph value has changed or if the first visible bar has changed
