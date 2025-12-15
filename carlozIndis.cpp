@@ -1342,12 +1342,13 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
   // first find first T&S entry from which to calculate in this update
   // or skip if calculating on bars at start of indicator's life
   int TSIndex = 0, limit = TimeSales.Size();
-  if (limit != 0) {
-    TSIndex = limit - 1;
-    for (TSIndex; TSIndex > 0; TSIndex--) {
-      if (TimeSales[TSIndex - 1].Sequence <= LastProcessedSequence)
-        break;
-    }
+  // if there is no Time&Sales then return
+  if (limit == 0)
+    return;
+  TSIndex = limit - 1;
+  for (TSIndex; TSIndex > 0; TSIndex--) {
+    if (TimeSales[TSIndex - 1].Sequence <= LastProcessedSequence)
+      break;
   }
 
   // now, iterate over the new Time&Sales entries
@@ -1371,7 +1372,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     } else if (TimeSales[TSIndex].Type == SC_TS_ASK) {
       lastTradeAtAsk = TimeSales[TSIndex].Ask * sc.RealTimePriceMultiplier;
 
-      // see if this trade borke the current high and clear current trades
+      // see if this trade broke the current high and clear current trades
       if (lastTradeAtAsk > hiGraph[i] && highBroken == false) {
         highBroken = true;
         if (clear.GetYesNo())
@@ -1379,8 +1380,9 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       }
     }
 
-    // first newLo and newHi will be the first trade
-    if (sc.IsFullRecalculation && newHi == 0 && newLo == 0) {
+    // if there has been a trade and both newHi and newLow are zero (ie indicator start)
+    // turn that trade into both
+    if (newHi == 0 && newLo == 0) {
       newHi = lastTradeAtBid != 0 ? lastTradeAtBid : lastTradeAtAsk;
       newLo = newHi;
     }
@@ -1447,6 +1449,7 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
       // nTicks)
       if (newLo != 0 && lastTradeAtBid >= (newLo + nTicks.GetInt() * sc.TickSize)) {
         // new confirmed Lo
+        // move lows to previous lows subgraphs and change their number display
         for (int x = nHiLos.GetInt() - 1; x > 0; x--) {
           sc.Subgraph[FIRST_P_LOW - 2 * x][i] = sc.Subgraph[FIRST_P_LOW - 2 * (x - 1)][i];
         }
@@ -1506,12 +1509,6 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
     tLoGraph[i] = newLo;
   }
 
-  // fallback in case no values are assigned to newHi and newLo (just after indicator insertion)
-  if (newHi == 0 && newLo == 0) {
-    newHi = sc.Ask;
-    newLo = sc.Bid;
-  }
-
   // if any subgraph value has changed or if the first visible bar has changed
   // extend all subgraph values to all visible bars
   if (valueChanged || firstVisibleBar != sc.IndexOfFirstVisibleBar) {
@@ -1524,6 +1521,11 @@ SCSFExport scsf_RealHisLos(SCStudyInterfaceRef sc) {
   // SAVE VALUES FOR NEXT UPDATE
   LastProcessedSequence = TimeSales[TimeSales.Size() - 1].Sequence;
   lastIndex = i;
+  // // fallback in case no values are assigned to newHi and newLo (just after indicator insertion)
+  // if (newHi == 0 && newLo == 0) {
+  //   newHi = sc.Ask;
+  //   newLo = sc.Bid;
+  // }
 }
 
 SCSFExport scsf_AutoMA(SCStudyInterfaceRef sc) {
